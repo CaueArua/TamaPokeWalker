@@ -1,0 +1,12 @@
+charmeleon, esquentado,
+seq 0 rec 0
+laço 64 
+baga verde
+1d
+a 184
+def 81
+vel 202
+pes 0
+10 25 baga
+26 
+descuidos 4

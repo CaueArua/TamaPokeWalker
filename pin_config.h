@@ -12,7 +12,7 @@
 #define LCD_SDIO3 7
 #define LCD_SCLK 38
 #define LCD_CS 12
-#define LCD_RESET 39
+#define LCD_RESET 1
 #define LCD_WIDTH 466
 #define LCD_HEIGHT 466
 
@@ -20,12 +20,12 @@
 #define IIC_SDA 15
 #define IIC_SCL 14
 #define TP_INT 11
-#define TP_RESET 40
+#define TP_RESET 2
 
 // Audio ES8311. NOTA: el MCLK real es GPIO42 (verificado en placa con el
 // proyecto PlaneRadar2.0); el 16 que figuraba era erroneo. Aun asi el codec se
 // configura con reloj derivado del BCLK, asi que el MCLK apenas importa.
-#define I2S_MCK_IO 42
+#define I2S_MCK_IO 16
 #define I2S_BCK_IO 9
 #define I2S_DI_IO 10
 #define I2S_WS_IO 45
@@ -38,7 +38,7 @@
 #define QMI8658_I2C_ADDR 0x6B
 
 // Ranura TF (no usada todavía)
-#define SDMMC_CLK 2
-#define SDMMC_CMD 1
-#define SDMMC_DATA 3
-#define SDMMC_CS 41
+#define SDMMC_CLK -1
+#define SDMMC_CMD -1
+#define SDMMC_DATA -1
+#define SDMMC_CS -1

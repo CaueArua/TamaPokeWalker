@@ -23,13 +23,13 @@ def rgb565(hexcol):
 # 0 PRADERA, 1 PLAYA, 2 BOSQUE, 3 VOLCAN, 4 MONTANA, 5 NIEVE
 TYPE_BIOME = {
     'agua': 1, 'planta': 2, 'bicho': 2, 'fuego': 3,
-    'roca': 4, 'tierra': 4, 'dragon': 1, 'hielo': 5,  # los dragones gen1 (Dratini) viven en el agua
+    'roca': 4, 'tierra': 4, 'dragon': 1, 'hielo': 5,
     'normal': 0, 'electrico': 0, 'lucha': 0, 'veneno': 0,
     'psiquico': 0, 'fantasma': 0, 'siniestro': 0, 'acero': 4,
 }
 
 # excepciones por dex# (el tipo no basta): fosiles marinos roca/agua -> playa
-BIOME_OVERRIDE = {138: 1, 139: 1, 140: 1, 141: 1}  # Omanyte, Omastar, Kabuto, Kabutops
+BIOME_OVERRIDE = {138: 1, 139: 1, 140: 1, 141: 1}
 
 BATTLE_TYPE_IDS = {
     'none': 0,
@@ -55,12 +55,16 @@ BATTLE_TYPE_IDS = {
 
 
 def main():
+    # Mapeia numero original da National Dex (entry[0]) -> novo indice sequencial (1..N)
+    id_to_idx = {entry[0]: idx for idx, entry in enumerate(DEX, start=1)}
+    eevee_idx = id_to_idx.get(133, 0)
+
     out = []
     out.append("#pragma once\n#include <stdint.h>\n\n")
     out.append("// GENERADO por tools/gen_dex.py desde tools/dex_data.py - no editar\n\n")
     out.append(f"#define DEX_COUNT {len(DEX)}\n")
     out.append("#define DEX_BITMAP_BYTES ((DEX_COUNT + 7) / 8)\n")
-    out.append("#define DEX_EEVEE 133  // rama: 134/135/136/196/197\n\n")
+    out.append(f"#define DEX_EEVEE {eevee_idx}  // indice sequencial del Eevee\n\n")
     out.append("#define DEX_LANG_COUNT 6\n\n")
     out.append(
         "// rareza: 0 = solo por evolucion, 1 = comun, 2 = raro, 3 = legendario\n"
@@ -83,35 +87,45 @@ def main():
         "};\n\n"
         "struct DexEntry {\n"
         "  const char *name;\n"
-        "  uint16_t evolvesTo;   // numero de dex, 0 = forma final\n"
+        "  uint16_t evolvesTo;   // nuevo indice de dex, 0 = forma final\n"
         "  uint8_t evolveLevel;\n"
         "  uint8_t rarity;       // sale de huevo si > 0\n"
         "  uint16_t accent;      // color RGB565 del tipo para la UI\n"
-        "  uint8_t bHp, bAtk, bDef, bSpe;  // base stats reales de gen 1\n"
+        "  uint8_t bHp, bAtk, bDef, bSpe;  // base stats reales\n"
         "  uint8_t type1, type2; // tipos de combate, TYPE_NONE si no hay secundario\n"
         "  uint8_t biome;        // 0 pradera 1 playa 2 bosque 3 volcan 4 montana 5 nieve\n"
+        "  uint16_t natNum;      // numero oficial de la National Dex\n"
         "};\n\n")
-    rules = []
+
+    raw_rules = []
     for num, _slug, _display, _typ, evo, lvl in DEX:
         override = EVOLUTION_RULE_OVERRIDES.get(num)
         if override is not None:
-            rules.extend((num, to, level, condition) for to, level, condition in override)
+            raw_rules.extend((num, to, level, condition) for to, level, condition in override)
         elif evo:
-            rules.append((num, evo, lvl, 'LEVEL'))
-    rules.extend(EVOLUTION_EXTRA)
+            raw_rules.append((num, evo, lvl, 'LEVEL'))
+    raw_rules.extend(EVOLUTION_EXTRA)
+
+    # Filtra e converte EVOLUTION_RULES para os novos indices
+    rules = []
+    for source, target, level, condition in raw_rules:
+        if source in id_to_idx and target in id_to_idx:
+            rules.append((id_to_idx[source], id_to_idx[target], level, condition))
+
     condition_ids = {
         'LEVEL': 'EVO_LEVEL', 'BOND': 'EVO_BOND',
         'DAY_BOND': 'EVO_DAY_BOND', 'NIGHT_BOND': 'EVO_NIGHT_BOND',
         'ATK_GT_DEF': 'EVO_ATK_GT_DEF', 'DEF_GT_ATK': 'EVO_DEF_GT_ATK',
         'ATK_EQ_DEF': 'EVO_ATK_EQ_DEF',
     }
-    evolved = {rule[1] for rule in rules}
+    evolved_orig = {target for _, target, _, _ in raw_rules if target in id_to_idx}
     rarities = []
+
     out.append("static const DexEntry DEX_TBL[DEX_COUNT + 1] = {\n")
-    out.append('  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, TYPE_NONE, TYPE_NONE, 0 },  // 0: sin usar\n')
-    for num, slug, display, typ, evo, lvl in DEX:
+    out.append('  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, TYPE_NONE, TYPE_NONE, 0, 0 },  // 0: sin usar\n')
+    for idx, (num, slug, display, typ, evo, lvl) in enumerate(DEX, start=1):
         acc = rgb565(TYPE_ACCENTS[typ])
-        if num in evolved:
+        if num in evolved_orig:
             rar = 'R_EVO'
         elif num in LEGENDARY:
             rar = 'R_LEGENDARIO'
@@ -125,14 +139,17 @@ def main():
         type1, type2 = BATTLE_TYPES[num]
         t1 = f"TYPE_{type1.upper()}"
         t2 = "TYPE_NONE" if type2 is None else f"TYPE_{type2.upper()}"
-        out.append(f'  {{ "{display}", {evo}, {lvl}, {rar}, 0x{acc:04X}, {hp}, {atk}, {df}, {spe}, {t1}, {t2}, {bio} }},  // {num} {type1}' + (f'/{type2}' if type2 else '') + '\n')
+        new_evo = id_to_idx.get(evo, 0)
+        out.append(f'  {{ "{display}", {new_evo}, {lvl}, {rar}, 0x{acc:04X}, {hp}, {atk}, {df}, {spe}, {t1}, {t2}, {bio}, {num} }},  // idx {idx} -> nat #{num} {type1}' + (f'/{type2}' if type2 else '') + '\n')
     out.append("};\n\n")
+
     out.append("// Evoluciones, incluidas ramas y condiciones especiales.\n")
     out.append("static const EvolutionRule EVOLUTION_RULES[] = {\n")
     for source, target, level, condition in rules:
         out.append(f"  {{ {source}, {target}, {level}, {condition_ids[condition]} }},\n")
     out.append("};\n")
     out.append(f"#define EVOLUTION_RULE_COUNT {len(rules)}\n\n")
+
     out.append("// nombres localizados en el orden de Lang: ES, EN, FR, DE, IT, PT\n")
     out.append("static const char *const DEX_NAMES[DEX_LANG_COUNT][DEX_COUNT + 1] = {\n")
     lang_labels = ("ES", "EN", "FR", "DE", "IT", "PT")
@@ -143,9 +160,13 @@ def main():
             out.append(f', "{LOCALIZED_NAMES[num][lang_idx]}"')
         out.append(" },\n")
     out.append("};\n\n")
+
+    # Converte CLASSIC_DEX para os novos indices sequenciais
+    mapped_classic = [id_to_idx[x] for x in CLASSIC if x in id_to_idx]
     out.append("// el primer huevo de la partida: iniciales clasicos\n")
-    out.append("static const int16_t CLASSIC_DEX[] = { %s };\n" % ", ".join(map(str, CLASSIC)))
-    out.append(f"#define NUM_CLASSIC_DEX {len(CLASSIC)}\n")
+    out.append("static const int16_t CLASSIC_DEX[] = { %s };\n" % ", ".join(map(str, mapped_classic)))
+    out.append(f"#define NUM_CLASSIC_DEX {len(mapped_classic)}\n")
+
     from collections import Counter
     c = Counter(rarities)
     print(f"bases: {c['R_COMUN']} comunes, {c['R_RARO']} raras, {c['R_LEGENDARIO']} legendarias, {c['R_EVO']} solo-evolucion")

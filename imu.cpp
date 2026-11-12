@@ -3,11 +3,12 @@
 
 #include <math.h>
 #include <Wire.h>
-#include <SensorQMI8658.hpp>
 
 #include "time_utils.h"
 
-static SensorQMI8658 qmi;
+#define QMI8658_ADDR_LOW  0x6B
+#define QMI8658_ADDR_HIGH 0x6A
+
 static bool ok = false;
 static uint8_t foundAddr = 0;
 static uint32_t lastPoll = 0;
@@ -63,20 +64,14 @@ static void detectSoftwareStep(uint32_t nowMs, float mag) {
 
   float signal = mag - walkGravity;
   float motion = fabsf(signal);
-  // In Ruhe folgt die Basislinie zuegig der Sensorabweichung. Bei Bewegung
-  // bleibt sie traege, damit der Gehimpuls nicht weggefiltert wird.
   float alpha = motion < 0.08f ? 0.12f : 0.025f;
   walkGravity += (mag - walkGravity) * alpha;
   if (deadlineActive(nowMs, bootIgnoreUntil)) return;
 
-  // Nach jedem Impuls muss die Bewegung erst abklingen. Das verhindert, dass
-  // Aufprall und Rueckschwung desselben Schritts doppelt gezaehlt werden.
   if (walkPeak) {
     if (signal <= 0.025f) walkPeak = false;
     return;
   }
-  // Nur den positiven Aufprall zaehlen. Der anschliessende negative Ausschlag
-  // ist Teil desselben Schritts und darf keinen zweiten Impuls erzeugen.
   if (signal < 0.085f) return;
   walkPeak = true;
 
@@ -90,8 +85,6 @@ static void detectSoftwareStep(uint32_t nowMs, float mag) {
 
   walkLastPeak = nowMs;
   if (walkCadence == 1) {
-    // Erst zwei rhythmische Impulse bestaetigen Gehen; dann die beiden ersten
-    // Schritte gemeinsam freigeben. Einzelne Stoesse bleiben wirkungslos.
     bankSteps(2);
     walkCadence = 2;
   } else {
@@ -100,21 +93,75 @@ static void detectSoftwareStep(uint32_t nowMs, float mag) {
   }
 }
 
+static void writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
+  Wire.beginTransmission(addr);
+  Wire.write(reg);
+  Wire.write(val);
+  Wire.endTransmission();
+}
+
+static uint8_t readReg(uint8_t addr, uint8_t reg) {
+  Wire.beginTransmission(addr);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return 0;
+  if (Wire.requestFrom(addr, (uint8_t)1) != 1) return 0;
+  return Wire.read();
+}
+
 static bool probeAndStart(uint8_t addr) {
-  if (!qmi.begin(Wire, addr, IIC_SDA, IIC_SCL)) return false;
-  // Der Hardware-Pedometer ist fuer 2G / 62,5 Hz abgestimmt (wie im offiziellen
-  // SensorLib-Beispiel). Mit 4G / 125 Hz blieben seine Zeit- und
-  // Spitzenschwellen auf echter Hardware praktisch stumm.
-  qmi.configAccelerometer(SensorQMI8658::ACC_RANGE_2G,
-                          SensorQMI8658::ACC_ODR_62_5Hz,
-                          SensorQMI8658::LPF_MODE_0);
-  qmi.configGyroscope(SensorQMI8658::GYR_RANGE_512DPS,
-                      SensorQMI8658::GYR_ODR_112_1Hz,
-                      SensorQMI8658::LPF_MODE_3);
-  qmi.enableAccelerometer();
-  qmi.enableGyroscope();
+  Wire.beginTransmission(addr);
+  if (Wire.endTransmission() != 0) return false;
+
+  uint8_t chipId = readReg(addr, 0x00); // WHO_AM_I deve retornar 0x05
+  if (chipId != 0x05) return false;
+
+  // Software reset (0x60 = 0xB0)
+  writeReg(addr, 0x60, 0xB0);
+  delay(15);
+
+  // CTRL1 (0x02): auto-incremento de endereco I2C (0x40)
+  writeReg(addr, 0x02, 0x40);
+
+  // CTRL2 (0x03): Acelerometro em 2G e ODR 62.5 Hz (0x05)
+  writeReg(addr, 0x03, 0x05);
+
+  // CTRL3 (0x04): Giroscopio em 512 dps e ODR 112.1 Hz (0x54)
+  writeReg(addr, 0x04, 0x54);
+
+  // CTRL7 (0x08): Habilita Acelerometro (bit 0) e Giroscopio (bit 1) = 0x03
+  writeReg(addr, 0x08, 0x03);
+
   delay(40);
   foundAddr = addr;
+  return true;
+}
+
+static bool readImuDirect(float &ax, float &ay, float &az, float &gx, float &gy, float &gz) {
+  if (foundAddr == 0) return false;
+
+  // Le 12 bytes seguidos a partir do registrador 0x35 (AX_L ate GZ_H)
+  Wire.beginTransmission(foundAddr);
+  Wire.write(0x35);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(foundAddr, (uint8_t)12) != 12) return false;
+
+  int16_t rawAx = (int16_t)(Wire.read() | (Wire.read() << 8));
+  int16_t rawAy = (int16_t)(Wire.read() | (Wire.read() << 8));
+  int16_t rawAz = (int16_t)(Wire.read() | (Wire.read() << 8));
+  int16_t rawGx = (int16_t)(Wire.read() | (Wire.read() << 8));
+  int16_t rawGy = (int16_t)(Wire.read() | (Wire.read() << 8));
+  int16_t rawGz = (int16_t)(Wire.read() | (Wire.read() << 8));
+
+  // Escala Acelerometro 2G = 16384 LSB/g
+  ax = rawAx / 16384.0f;
+  ay = rawAy / 16384.0f;
+  az = rawAz / 16384.0f;
+
+  // Escala Giroscopio 512 dps = 64 LSB/dps
+  gx = rawGx / 64.0f;
+  gy = rawGy / 64.0f;
+  gz = rawGz / 64.0f;
+
   return true;
 }
 
@@ -134,29 +181,15 @@ bool imuBegin() {
   shakePending = false;
   lastPoll = 0;
 
-  // Board-Schema: 0x6B. 0x6A ist die alternative SA0-Adresse.
-  if (!probeAndStart(QMI8658_L_SLAVE_ADDRESS) &&
-      !probeAndStart(QMI8658_H_SLAVE_ADDRESS)) {
+  if (!probeAndStart(QMI8658_ADDR_LOW) &&
+      !probeAndStart(QMI8658_ADDR_HIGH)) {
     Serial.println("QMI8658 no detectado");
     return false;
   }
 
-  // Vier zusammenhaengende Schritte reichen fuer den Einstieg; der Sensor
-  // meldet jeden validierten Schritt sofort statt in Viererpaketen. So werden
-  // kurze Gehstrecken im Haus sichtbar, ohne beliebiges Schuetteln zu zaehlen.
-  qmi.configPedometer(50, 200, 100, 200, 20, 4, 0, 1);
-  if (qmi.enablePedometer()) {
-    lastPed = qmi.getPedometerCounter();
-    pedInited = true;
-  }
-  // Pedometer-Config kann Accel/Gyro ausmachen: wieder anschalten.
-  qmi.enableAccelerometer();
-  qmi.enableGyroscope();
-
   bootIgnoreUntil = millis() + 400;
   ok = true;
-  Serial.printf("QMI8658 ok addr=0x%02X id=0x%X ped=%d\n",
-                foundAddr, qmi.getChipID(), pedInited);
+  Serial.printf("QMI8658 ok (I2C direto) addr=0x%02X\n", foundAddr);
   return true;
 }
 
@@ -166,38 +199,23 @@ void imuPoll(uint32_t nowMs, uint16_t intervalMs) {
   if (lastPoll && (uint32_t)(nowMs - lastPoll) < intervalMs) return;
   lastPoll = nowMs ? nowMs : 1;
 
-  // getDataReady() ist unzuverlaessig, wenn Accel- und Gyro-ODR nicht identisch
-  // sind (steht so in SensorLib). Rohregister lesen reicht fuer Shake.
-
   float x = 0, y = 0, z = 0;
-  bool accelRead = qmi.getAccelerometer(x, y, z);
-  if (accelRead) {
+  float gx = 0, gy = 0, gz = 0;
+  if (readImuDirect(x, y, z, gx, gy, gz)) {
     lastMag = sqrtf(x * x + y * y + z * z);
     detectSoftwareStep(nowMs, lastMag);
-  }
-  float gx = 0, gy = 0, gz = 0;
-  if (qmi.getGyroscope(gx, gy, gz)) {
     lastGyro = sqrtf(gx * gx + gy * gy + gz * gz);
+    lastPed = softPed;
   }
 
-  // Ruhe ~1 g. Ein normaler Ball-Schuettler liegt oft nur bei 1.4-1.8 g;
-  // Gyro faengt Drehen im Gehaeuse besser als der Accel allein.
   bool hot = lastMag >= 1.45f || lastGyro >= 80.0f;
   if (deadlineActive(nowMs, bootIgnoreUntil)) {
     return;
   }
-  // Die Schuettel-Entprellung darf nur das Shake-Event blockieren, nicht das
-  // Pedometer. Sonst konnte Gehen bei eingeschaltetem Display alle 40/80 ms
-  // die Schritt-Abfrage ueberspringen.
   if (hot && !deadlineActive(nowMs, shakeIgnoreUntil)) {
     shakePending = true;
     shakeIgnoreUntil = nowMs + 280;
   }
-
-  // Der interne Zaehler bleibt als Diagnose sichtbar. Gezaehlt wird bewusst
-  // nur die Software-Erkennung, weil der Hardware-Pedometer auf einigen Boards
-  // trotz erfolgreicher Aktivierung dauerhaft bei null bleibt.
-  if (pedInited) lastPed = qmi.getPedometerCounter();
 }
 
 bool imuShakeEdge() {

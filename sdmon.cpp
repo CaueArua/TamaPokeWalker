@@ -3,7 +3,7 @@
 #include "dex.h"
 #include "thumb_format.h"
 #include <FS.h>
-#include <SD_MMC.h>
+#include <FFat.h>
 
 bool sdReady = false;
 bool sdDirty = false;
@@ -15,10 +15,10 @@ bool PmdMon::load(uint16_t dexNum, bool shiny) {
 
   char path[28];
   snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = FFat.open(path, FILE_READ);
   if (!f && shiny) {  // sin shiny PMD: usa el normal
     snprintf(path, sizeof(path), "/mons/p%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = FFat.open(path, FILE_READ);
   }
   if (!f) return false;
 
@@ -89,7 +89,7 @@ void PmdMon::unload() {
 bool SdThumbs::load() {
   unload();
   if (!sdReady) return false;
-  File f = SD_MMC.open("/mons/thumbs.bin", FILE_READ);
+  File f = FFat.open("/mons/thumbs.bin", FILE_READ);
   if (!f) {
     Serial.println("sin thumbs.bin (galeria sin miniaturas)");
     return false;
@@ -129,13 +129,16 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
 }
 
 bool sdBegin() {
-  SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA);
-  sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */, true /* formatea si no monta */);
+  sdReady = FFat.begin(true);
   if (sdReady) {
-    Serial.printf("SD montada: %llu MB\n", SD_MMC.cardSize() / (1024ULL * 1024ULL));
-    SD_MMC.mkdir("/mons");
+    Serial.printf("FFat montada: %llu MB total (%llu KB livres)\n",
+                  FFat.totalBytes() / (1024ULL * 1024ULL),
+                  FFat.freeBytes() / 1024ULL);
+    if (!FFat.exists("/mons")) {
+      FFat.mkdir("/mons");
+    }
   } else {
-    Serial.println("SD no detectada (el juego usa los sprites de flash)");
+    Serial.println("Falha ao montar FFat (el juego usa los sprites de flash)");
   }
   return sdReady;
 }
@@ -146,10 +149,10 @@ bool SdMon::load(uint16_t dexNum, bool shiny) {
 
   char path[24];
   snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = FFat.open(path, FILE_READ);
   if (!f && shiny) {  // sin variante shiny: usa la normal
     snprintf(path, sizeof(path), "/mons/%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = FFat.open(path, FILE_READ);
   }
   if (!f) {
     Serial.printf("no existe %s\n", path);
@@ -213,7 +216,7 @@ void SdMon::unload() {
 }
 
 // ---------------------------------------------------------------------------
-// Protocolo de carga por USB (para llenar la SD sin sacarla de la placa):
+// Protocolo de carga por USB (para llenar la FFat sin sacar nada de la placa):
 //   PUT <ruta> <bytes>\n  + datos crudos   -> "OK" ... "DONE"
 //   LS\n                                   -> listado de /mons
 // Usar con tools/send_sd.py
@@ -229,7 +232,8 @@ bool sdSerialCommand(const String &line) {
       return true;
     }
     if (!path.startsWith("/")) path = "/" + path;
-    File f = SD_MMC.open(path, FILE_WRITE);
+    if (FFat.exists(path)) FFat.remove(path);
+    File f = FFat.open(path, FILE_WRITE);
     if (!f) {
       Serial.println("ERR");
       return true;
@@ -252,7 +256,7 @@ bool sdSerialCommand(const String &line) {
     Serial.println(remaining == 0 ? "DONE" : "ERR");
     return true;
   } else if (line == "LS") {
-    File dir = SD_MMC.open("/mons");
+    File dir = FFat.open("/mons");
     if (dir) {
       File e;
       while ((e = dir.openNextFile())) {
@@ -262,6 +266,19 @@ bool sdSerialCommand(const String &line) {
       dir.close();
     }
     Serial.println("DONE");
+    return true;
+  } else if (line == "CLEAR") {
+    File dir = FFat.open("/mons");
+    if (dir) {
+      File e;
+      while ((e = dir.openNextFile())) {
+        String p = String("/mons/") + e.name();
+        e.close();
+        FFat.remove(p);
+      }
+      dir.close();
+    }
+    Serial.println("CLEARED");
     return true;
   }
   return false;
