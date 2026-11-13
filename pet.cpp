@@ -314,6 +314,22 @@ void Pet::tick() {
   // autoguardado periodico: NO escribir a flash aqui (corre dentro del loop,
   // mientras se anima); solo marcar y dejar que el loop lo vuelque al atenuar
   if (++ticksSinceSave >= 5) pendingSave = true;
+
+
+  // Recuperação de energia dos Pokémon inativos na Party (1/4 da taxa de descanso: +1 a cada 4 ticks)
+  static uint8_t partyRestTicks = 0;
+  partyRestTicks++;
+  if (partyRestTicks >= 4) {
+    partyRestTicks = 0;
+    for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+      if (i == activePartySlot) continue; // Ignora o Pokémon ativo atual
+      PartySlot &s = party[i];
+      if (s.speciesId > 0 && s.speciesId <= DEX_COUNT && s.energy < 100) {
+        s.energy = clamp100(s.energy + 6); // Recupera 6 de energia a cada 4 ticks
+      }
+    }
+  }
+
 }
 
 // vuelca el guardado periodico pendiente (lo llama el loop en un momento sin
