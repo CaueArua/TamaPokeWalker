@@ -75,6 +75,10 @@ struct {
 #define PET_GROUND 304  // linea de suelo de la mascota
 PmdMon galleryPmd;  // sprite grande de la vista detalle de la galeria (PMD/TPK2, legal)
 
+// DEX
+bool partyOpen = false;
+bool partyDirty = false;
+
 // galeria pokedex
 bool galleryOpen = false;
 bool galleryDirty = false;
@@ -262,8 +266,8 @@ bool wasPressed = false;
 // eleccion de inicial (primera partida): primero region, despues 3 starters.
 static const int16_t STARTER_DEX[3][3] = {
   { 1, 4, 7 },       // Kanto
-  { 152, 155, 158 }, // Johto
-  { 252, 255, 258 }, // Hoenn
+  { 47, 50, 53 }, // Johto
+  { 69, 72, 75 }, // Hoenn
 };
 static const StrId STARTER_REGION_LABELS[3] = {
   S_RANK_KANTO, S_RANK_JOHTO, S_RANK_HOENN
@@ -340,6 +344,7 @@ const char *screenName() {
 bool staticScreenClean() {
   if (watermarkNeedsRedraw()) return false;
   if (pet.awaitingStarter()) return !starterDirty;
+  if (partyOpen) return !partyDirty;
   if (galleryOpen && !galleryDetail) return !galleryDirty;
   if (battleOpen && battleResolved) return !battleDirty;
   if (kbOpen) return !keyboardDirty;
@@ -1120,14 +1125,34 @@ void onSwipe(int dir) {
     if (cardPage != old) { expeditionTrainChoiceOpen = false; cardDirty = true; sfxPlay(SFX_MENU); }
     return;
   }
+
+ // 1. Se a tela da Party já estiver aberta: deslizar para a ESQUERDA (dir < 0) fecha e volta ao jogo
+  if (partyOpen) {
+    partyOpen = false;
+    markUiDirty();
+    lockTouchBrief();
+    sfxPlay(SFX_TAP);
+    return;
+  }
+
+  // 2. Na tela principal (nem galleryOpen nem partyOpen abertos)
   if (!galleryOpen) {
     if (!pet.ceremony && !confirmUntil) {
-      galleryOpen = true;
-      galleryPage = 0;
-      galleryDetail = 0;
-      galleryDirty = true;
-      lockTouchBrief();
-      sfxPlay(SFX_MENU);
+      if (dir < 0) {
+        // Deslizou para a ESQUERDA -> Abre a Pokédex / Galeria
+        galleryOpen = true;
+        galleryPage = 0;
+        galleryDetail = 0;
+        galleryDirty = true;
+        lockTouchBrief();
+        sfxPlay(SFX_MENU);
+      } else if (!pet.isEgg()) {
+        // Deslizou para a DIREITA -> Abre a nova tela exclusiva da Party
+        partyOpen = true;
+        partyDirty = true;
+        lockTouchBrief();
+        sfxPlay(SFX_MENU);
+      }
     }
     return;
   }
@@ -1220,6 +1245,31 @@ void onTap(int16_t x, int16_t y) {
     galleryTap(x, y);
     return;
   }
+  if (partyOpen) {
+    // Verifica se tocou em um dos 6 slots da Party (x = 58..408, y = 84 + i * 50)
+    for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+      int ry = 84 + i * 50;
+      if (x >= 58 && x <= 408 && y >= ry && y <= ry + 42) {
+        if (pet.switchPartySlot(i)) {
+          partyOpen = false;
+          markUiDirty();
+          lockTouchBrief();
+          sfxPlay(SFX_EAT);
+          speciesChirpPlay(pet.speciesId, true); // Toca o grito do novo Pokémon!
+        }
+        return;
+      }
+    }
+    // Tocar no rodapé (y >= 390) também fecha a Party
+    if (y >= 390) {
+      partyOpen = false;
+      markUiDirty();
+      lockTouchBrief();
+      sfxPlay(SFX_TAP);
+    }
+    return;
+  }
+  
   if (kbOpen) {
     keyboardTap(x, y);
     return;
@@ -1712,6 +1762,11 @@ void render() {
   }
   if (galleryOpen) {
     renderGallery();
+    return;
+  }
+  if (partyOpen) {
+    renderPartyScreen();
+    partyDirty = false;
     return;
   }
   if (gameOpen) {
@@ -4299,7 +4354,7 @@ void renderCardBox() {
     gfx->fillRoundRect(58, y, 350, 34, 9, UI_WHITE);
     gfx->drawRoundRect(58, y, 350, 34, 9, d.accent);
     char name[24];
-    snprintf(name, sizeof(name), "#%03d %s", dex, dexName(dex));
+    snprintf(name, sizeof(name), "#%03d %s", DEX_TBL[dex].natNum, dexName(dex));
     int ts = strlen(name) <= 16 ? 2 : 1;
     gfx->setTextSize(ts);
     gfx->setTextColor(UI_INK);
@@ -4332,6 +4387,91 @@ void renderCardBox() {
   gfx->setCursor(CX - strlen(pg) * 6, 360);
   gfx->print(pg);
 }
+
+void renderPartyScreen() {
+  pet.syncToParty(); // Garante que o Pokémon ativo atual está atualizado no slot
+  gfx->fillScreen(UI_BG_DAY);
+
+  // Conta quantos slots estão ocupados
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+    if (pet.party[i].speciesId > 0) count++;
+  }
+
+  // Cabeçalho
+  char title[24];
+  snprintf(title, sizeof(title), "PARTY (%u/6)", count);
+  gfx->setTextColor(UI_INK);
+  gfx->setTextSize(3);
+  gfx->setCursor(CX - (int)strlen(title) * 9, 36);
+  gfx->print(title);
+
+  // Desenha os 6 slots da Party (y = 84 até 380)
+  for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+    int y = 84 + i * 50;
+    const PartySlot &s = pet.party[i];
+    bool isActive = (i == pet.activePartySlot && !pet.isEgg());
+
+    if (s.speciesId > 0 && s.speciesId <= DEX_COUNT) {
+      const DexEntry &d = DEX_TBL[s.speciesId];
+
+      // Cartão do slot com borda verde dupla no Pokémon ativo
+      gfx->fillRoundRect(58, y, 350, 42, 10, UI_WHITE);
+      gfx->drawRoundRect(58, y, 350, 42, 10, isActive ? UI_BAR_OK : d.accent);
+      if (isActive) {
+        gfx->drawRoundRect(59, y + 1, 348, 40, 9, UI_BAR_OK);
+      }
+
+      // Linha 1: Número oficial (#025), Nome e estrela Shiny (*)
+      char name[28];
+      const char *dispName = (s.nick[0] != '\0') ? s.nick : dexName(s.speciesId);
+      snprintf(name, sizeof(name), "#%03d %s%s", d.natNum, dispName, s.shiny ? "*" : "");
+      int ts = strlen(name) <= 16 ? 2 : 1;
+      gfx->setTextSize(ts);
+      gfx->setTextColor(UI_INK);
+      gfx->setCursor(72, y + (ts == 2 ? 6 : 8));
+      gfx->print(name);
+
+      // Linha 2: Tipos
+      char types[22];
+      typeText(types, sizeof(types), d);
+      gfx->setTextSize(1);
+      gfx->setTextColor(battleTypeColor(d.type1));
+      gfx->setCursor(72, y + 27);
+      gfx->print(types);
+
+      // Lado direito: Nível e status [ATIVO] / [TROCAR]
+      uint8_t lv = 1 + (s.ageMinutes / MINUTES_PER_LEVEL);
+      if (lv > 100) lv = 100;
+      char lvBuf[12];
+      snprintf(lvBuf, sizeof(lvBuf), "Lv.%u", lv);
+      gfx->setTextSize(2);
+      gfx->setTextColor(UI_INK);
+      gfx->setCursor(325, y + 6);
+      gfx->print(lvBuf);
+
+      gfx->setTextSize(1);
+      gfx->setTextColor(isActive ? UI_BAR_OK : UI_TRACK);
+      gfx->setCursor(isActive ? 345 : 338, y + 27);
+      gfx->print(isActive ? "ATIVO" : "TROCAR");
+    } else {
+      // Slot vazio
+      gfx->fillRoundRect(58, y, 350, 42, 10, C565(0xe4, 0xe8, 0xee));
+      gfx->drawRoundRect(58, y, 350, 42, 10, UI_TRACK);
+      gfx->setTextSize(2);
+      gfx->setTextColor(UI_TRACK);
+      gfx->setCursor(CX - 36, y + 14);
+      gfx->print("- VAZIO -");
+    }
+  }
+
+  // Rodapé de dica para voltar
+  gfx->setTextSize(1);
+  gfx->setTextColor(UI_TRACK);
+  gfx->setCursor(CX - 54, 396);
+  gfx->print("< DESLIZE P/ VOLTAR");
+}
+
 
 // pagina 3: combate (4 barras + botones)
 void renderCardStats() {
@@ -5013,9 +5153,9 @@ void keyboardTap(int16_t x, int16_t y) {
 
 bool galleryDexVisible(int16_t dex) {
   if (dex < 1 || dex > DEX_COUNT) return false;
-  if (galleryRegion == 1 && dex > 151) return false;
-  if (galleryRegion == 2 && (dex < 152 || dex > 251)) return false;
-  if (galleryRegion == 3 && dex < 252) return false;
+  if (galleryRegion == 1 && dex > 46) return false;
+  if (galleryRegion == 2 && (dex < 47 || dex > 68)) return false;
+  if (galleryRegion == 3 && dex < 69) return false;
   if (galleryFilter == 1) return pet.isRegistered(dex);
   if (galleryFilter == 2) return pet.isCaught(dex);
   if (galleryFilter == 3) return pet.isShinyRegistered(dex);
