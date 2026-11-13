@@ -28,6 +28,7 @@
 #include "dayphase.h"
 #include "imu.h"
 #include "src/ui/party_screen.h"
+#include "src/ui/dex_screen.h"
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
@@ -74,18 +75,9 @@ struct {
   float x = 233, targetX = 233;
 } beh;
 #define PET_GROUND 304  // linea de suelo de la mascota
-PmdMon galleryPmd;  // sprite grande de la vista detalle de la galeria (PMD/TPK2, legal)
-
 // DEX
 
 // galeria pokedex
-bool galleryOpen = false;
-bool galleryDirty = false;
-int galleryPage = 0;        // 10 paginas de 16
-int16_t galleryDetail = 0;  // dex en vista detalle, 0 = rejilla
-uint8_t galleryFilter = 0;  // 0 todos, 1 criados, 2 capturados
-uint8_t galleryRegion = 0;  // 0 all, 1 Kanto, 2 Johto, 3 Hoenn
-
 bool screenOff = false;       // pulsacion corta del boton PWR
 bool cardOpen = false;        // ficha del bicho (deslizar vertical)
 bool kbOpen = false;          // teclado para renombrar al bicho
@@ -316,7 +308,6 @@ void markUiDirty() {
   keyboardDirty = true;
   gameMenuDirty = true;
   battleDirty = true;
-  galleryDirty = true;
   if (activeScreen) activeScreen->markDirty();
 }
 
@@ -329,7 +320,7 @@ void lockTouchBrief(uint16_t ms = 160) {
 
 const char *screenName() {
   if (pet.awaitingStarter()) return "starter";
-  if (galleryOpen) return galleryDetail ? "gallery-detail" : "gallery-grid";
+  if (dexScreen.isOpen()) return dexScreen.isDetail() ? "gallery-detail" : "gallery-grid";
   if (gameOpen) return "game";
   if (sackOpen) return "sack";
   if (battleOpen) return battleResolved ? "battle-result" : "battle";
@@ -344,7 +335,6 @@ const char *screenName() {
 bool staticScreenClean() {
   if (watermarkNeedsRedraw()) return false;
   if (pet.awaitingStarter()) return !starterDirty;
-  if (galleryOpen && !galleryDetail) return !galleryDirty;
   if (battleOpen && battleResolved) return !battleDirty;
   if (kbOpen) return !keyboardDirty;
   if (helpOpen) return !helpDirty;
@@ -443,7 +433,7 @@ void ensureMon() {
 bool mainScreenReadyForAmbientSound() {
   if (audioMode() != SOUND_FULL || screenOff || dimStage > 0) return false;
   if (pet.awaitingStarter() || pet.isEgg() || pet.sleeping || pet.ceremony) return false;
-  if (activeScreen || battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || galleryOpen || kbOpen || clockOpen || helpOpen) return false;
+  if (activeScreen || battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || dexScreen.isOpen() || kbOpen || clockOpen || helpOpen) return false;
   if (feedMenuUntil || confirmUntil || choiceKind || bathUntil || wildPromptUntil || petEventUntil) return false;
   if (pet.evolving() || pet.wantEvolveButton() || pet.canRunawayNow() || pet.wantFarewellButton()) return false;
   return true;
@@ -466,7 +456,7 @@ uint16_t renderIntervalMs() {
   if (screenOff) return 5000;
   if (battleOpen) return battleResolved ? 320 : 190;
   if (gameOpen || sackOpen) return 115;
-  if (galleryOpen || cardOpen || kbOpen || clockOpen || helpOpen || gameMenuOpen) return powerSave ? 650 : 320;
+  if (dexScreen.isOpen() || cardOpen || kbOpen || clockOpen || helpOpen || gameMenuOpen) return powerSave ? 650 : 320;
   if (!powerSave) return 100;
   if (dimStage >= 2) return 650;
   if (dimStage >= 1) return 350;
@@ -481,7 +471,7 @@ bool lightSleepAllowed(uint32_t now) {
   if (gameOpen || sackOpen || battleOpen || bathUntil) return false;
   if (pet.awaitingStarter() || feedMenuUntil || confirmUntil || choiceKind || wildPromptUntil || petEventUntil) return false;
   if (pet.evolving() || pet.ceremony || pet.eating() || pet.showHeart()) return false;
-  if (galleryOpen || cardOpen || kbOpen || clockOpen || helpOpen || gameMenuOpen) return false;
+  if (dexScreen.isOpen() || cardOpen || kbOpen || clockOpen || helpOpen || gameMenuOpen) return false;
   return true;
 }
 
@@ -735,7 +725,7 @@ void handleSerial() {
                   (unsigned long)perfRenderCount, (unsigned long)perfRenderSkipCount,
                   (unsigned long)perfLoopLastMs, (unsigned long)perfLoopMaxMs,
                   renderIntervalMs(), uiDirty, cardDirty, clockDirty, helpDirty,
-                  keyboardDirty, gameMenuDirty, battleDirty, galleryDirty);
+                  keyboardDirty, gameMenuDirty, battleDirty, dexScreen.isDirty());
     perfRenderMaxMs = 0;
     perfLoopMaxMs = 0;
     Serial.println("DONE");
@@ -767,10 +757,12 @@ void handleSerial() {
     Serial.printf("rtc=%u\n", rtcEpoch());
     Serial.println("DONE");
   } else if (line == "GAL") {
-    galleryOpen = !galleryOpen;
-    galleryDetail = 0;
-    galleryDirty = true;
-    if (!galleryOpen) galleryPmd.unload();
+    if (dexScreen.isOpen()) {
+      setScreen(nullptr);
+    } else {
+      dexScreen.openGrid();
+      setScreen(&dexScreen);
+    }
     Serial.println("DONE");
   } else if (line == "EGGS") {
     // simula 20 tiradas de huevo (no cambia el estado del juego)
@@ -1001,7 +993,7 @@ void handleTouch() {
         return;
       }
       // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
-      if (!holdFired && !swallowGesture && !activeScreen && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && !helpOpen && heldMs > 3000 &&
+      if (!holdFired && !swallowGesture && !activeScreen && !dexScreen.isOpen() && !cardOpen && !kbOpen && !clockOpen && !helpOpen && heldMs > 3000 &&
           abs(tXl - tX0) < 30 && abs(tYl - tY0) < 30 && inPetZone(tX0, tY0) &&
           !pet.isEgg() && !confirmUntil && !pet.ceremony) {
         confirmUntil = millis() + 10000;
@@ -1044,7 +1036,7 @@ void handleTouch() {
     tXl = x;
     tYl = y;
     // pulsacion larga sin moverse sobre el bicho -> dialogo de soltar
-    if (!holdFired && !swallowGesture && !activeScreen && !galleryOpen && !cardOpen && !kbOpen && !clockOpen && !helpOpen && millis() - tStart > 3000 &&
+    if (!holdFired && !swallowGesture && !activeScreen && !dexScreen.isOpen() && !cardOpen && !kbOpen && !clockOpen && !helpOpen && millis() - tStart > 3000 &&
         abs(tXl - tX0) < 30 && abs(tYl - tY0) < 30 && inPetZone(tX0, tY0) &&
         !pet.isEgg() && !confirmUntil && !pet.ceremony) {
       confirmUntil = millis() + 10000;
@@ -1093,7 +1085,7 @@ void onSwipeV(int dir) {
   if (wildPromptUntil && deadlineActive(millis(), wildPromptUntil)) return;
   if (wildPromptUntil) wildPromptUntil = 0;
   if (gameMenuOpen) return;
-  if (gameOpen || galleryOpen || kbOpen || sackOpen || battleOpen || pet.ceremony) return;
+  if (gameOpen || dexScreen.isOpen() || kbOpen || sackOpen || battleOpen || pet.ceremony) return;
   if (clockOpen) { clockOpen = false; markUiDirty(); lockTouchBrief(); sfxPlay(SFX_TAP); return; }
   if (cardOpen) {
     if (dir < 0) { cardOpen = false; expeditionTrainChoiceOpen = false; markUiDirty(); lockTouchBrief(); sfxPlay(SFX_TAP); }  // arriba cierra la ficha
@@ -1136,21 +1128,18 @@ void onSwipe(int dir) {
     return;
   }
 
- // 1. Se a tela da Party já estiver aberta: deslizar para a ESQUERDA (dir < 0) fecha e volta ao jogo
+  // Telas modulares tratam seus próprios gestos horizontais.
   if (activeScreen) {
     activeScreen->handleSwipe(dir);
     return;
   }
-  // 2. Na tela principal (nem galleryOpen nem partyOpen abertos)
-  if (!galleryOpen) {
+  // 2. Na tela principal (nem Pokédex nem Party abertos)
+  if (!dexScreen.isOpen()) {
     if (!pet.ceremony && !confirmUntil) {
       if (dir < 0) {
         // Esquerda -> Abre a Pokédex
-        galleryOpen = true;
-        galleryPage = 0;
-        galleryDetail = 0;
-        galleryDirty = true;
-        lockTouchBrief();
+        dexScreen.openGrid();
+        setScreen(&dexScreen);
         sfxPlay(SFX_MENU);
       } else if (!pet.isEgg()) {
         // Direita -> Abre a tela modular da Party
@@ -1159,29 +1148,6 @@ void onSwipe(int dir) {
       }
     }
     return;
-  }
-  if (galleryDetail) {  // en detalle: volver a la rejilla
-    galleryDetail = 0;
-    galleryPmd.unload();
-    galleryDirty = true;
-    lockTouchBrief();
-    return;
-  }
-  int np = galleryPage - dir;  // deslizar a la izquierda avanza pagina
-  int maxPage = galleryPageCount() - 1;
-  if (np < 0) {                // retroceder desde la primera = salir
-    galleryOpen = false;
-    galleryPmd.unload();
-    markUiDirty();
-    lockTouchBrief();
-    sfxPlay(SFX_TAP);
-    return;
-  }
-  if (np > maxPage) np = maxPage;
-  if (np != galleryPage) {
-    galleryPage = np;
-    galleryDirty = true;
-    sfxPlay(SFX_MENU);
   }
 }
 
@@ -1245,8 +1211,8 @@ void onTap(int16_t x, int16_t y) {
     }
     return;
   }
-  if (galleryOpen) {
-    galleryTap(x, y);
+  if (dexScreen.isOpen()) {
+    dexScreen.handleTap(x, y);
     return;
   }
   
@@ -1299,11 +1265,8 @@ void onTap(int16_t x, int16_t y) {
           int16_t dex = boxDexAt((uint16_t)boxPage * 5 + row);
           if (dex > 0) {
             cardOpen = false;
-            galleryOpen = true;
-            galleryDetail = dex;
-            galleryDirty = true;
-            lockTouchBrief();
-            galleryPmd.load(dex, pet.isShinyRegistered(dex));
+            dexScreen.openDetail(dex);
+            setScreen(&dexScreen);
             sfxPlay(SFX_TAP);
             speciesChirpPlay(dex);
           }
@@ -1736,17 +1699,12 @@ void render() {
     keyboardDirty = true;
     gameMenuDirty = true;
     battleDirty = true;
-    galleryDirty = true;
     if (activeScreen) activeScreen->markDirty();
   }
   if (staticScreenClean()) { perfRenderSkipCount++; return; }
   if (pet.awaitingStarter()) {  // primera partida: region y starter (prioridad total)
     if (starterRegion == 0xFF) renderStarterRegionSelect();
     else renderStarterSelect();
-    return;
-  }
-  if (galleryOpen) {
-    renderGallery();
     return;
   }
   if (gameOpen) {
@@ -2857,7 +2815,7 @@ void scheduleNextWild(uint32_t now) {
 
 bool mainScreenReadyForWild() {
   if (screenOff || pet.awaitingStarter() || pet.isEgg() || pet.sleeping || pet.ceremony) return false;
-  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || galleryOpen || kbOpen || clockOpen || helpOpen) return false;
+  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || dexScreen.isOpen() || kbOpen || clockOpen || helpOpen) return false;
   if (feedMenuUntil || confirmUntil || choiceKind || bathUntil || petEventUntil) return false;
   if (pet.evolving() || pet.wantEvolveButton() || pet.canRunawayNow() || pet.wantFarewellButton()) return false;
   return true;
@@ -2897,7 +2855,7 @@ void scheduleNextPetEvent(uint32_t now) {
 
 bool mainScreenReadyForPetEvent() {
   if (screenOff || pet.awaitingStarter() || pet.isEgg() || pet.sleeping || pet.ceremony) return false;
-  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || galleryOpen || kbOpen || clockOpen || helpOpen) return false;
+  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || dexScreen.isOpen() || kbOpen || clockOpen || helpOpen) return false;
   if (feedMenuUntil || confirmUntil || choiceKind || bathUntil || wildPromptUntil) return false;
   if (pet.evolving() || pet.wantEvolveButton() || pet.canRunawayNow() || pet.wantFarewellButton()) return false;
   return true;
@@ -2947,7 +2905,7 @@ void acceptPetEvent() {
 
 bool mainScreenReadyForShake() {
   if (screenOff || pet.awaitingStarter() || pet.isEgg() || pet.sleeping || pet.ceremony) return false;
-  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || galleryOpen || kbOpen || clockOpen || helpOpen) return false;
+  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || dexScreen.isOpen() || kbOpen || clockOpen || helpOpen) return false;
   if (feedMenuUntil || confirmUntil || choiceKind || bathUntil) return false;
   if (pet.evolving()) return false;
   return true;
@@ -2959,7 +2917,7 @@ void maybeOfferMorning(uint32_t now) {
     return;
   }
   if (screenOff || pet.awaitingStarter() || pet.ceremony) return;
-  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || galleryOpen || kbOpen || clockOpen || helpOpen) return;
+  if (battleOpen || gameOpen || gameMenuOpen || sackOpen || cardOpen || dexScreen.isOpen() || kbOpen || clockOpen || helpOpen) return;
   if (feedMenuUntil || confirmUntil || choiceKind || bathUntil || wildPromptUntil || petEventUntil) return;
   if (currentDayPhase() != 0) return;
   if (!pet.takeMorningGreeting()) return;
@@ -3119,7 +3077,7 @@ void battleTap(int16_t x, int16_t y) {
         }
 
         sfxPlay(battleCatchSuccess ? SFX_CATCH_OK : SFX_CATCH_FAIL);
-        galleryDirty = true;
+        dexScreen.markDirty();
         battleDirty = true;
         return;
       }
@@ -4657,7 +4615,7 @@ void drawStepsHud() {
 
 bool expeditionHudVisible() {
   if (pet.isEgg() || pet.ceremony || cardOpen || gameOpen || sackOpen || battleOpen ||
-      galleryOpen || kbOpen || clockOpen || helpOpen) return false;
+      dexScreen.isOpen() || kbOpen || clockOpen || helpOpen) return false;
   if (gameMenuOpen || feedMenuUntil || confirmUntil || choiceKind || bathUntil ||
       petEventUntil || wildPromptUntil) return false;
   return pet.expeditionHudState(expeditionNowEpoch()) != EXP_HUD_HIDDEN;
@@ -5059,40 +5017,6 @@ void keyboardTap(int16_t x, int16_t y) {
 #define GAL_Y 116
 #define GAL_CELL 74
 
-bool galleryDexVisible(int16_t dex) {
-  if (dex < 1 || dex > DEX_COUNT) return false;
-  if (galleryRegion == 1 && dex > 46) return false;
-  if (galleryRegion == 2 && (dex < 47 || dex > 68)) return false;
-  if (galleryRegion == 3 && dex < 69) return false;
-  if (galleryFilter == 1) return pet.isRegistered(dex);
-  if (galleryFilter == 2) return pet.isCaught(dex);
-  if (galleryFilter == 3) return pet.isShinyRegistered(dex);
-  return true;
-}
-
-uint16_t galleryFilteredCount() {
-  if (galleryFilter == 0) return DEX_COUNT;
-  uint16_t count = 0;
-  for (int16_t dex = 1; dex <= DEX_COUNT; dex++)
-    if (galleryDexVisible(dex)) count++;
-  return count;
-}
-
-int galleryPageCount() {
-  uint16_t count = galleryFilteredCount();
-  int pages = (count + 15) / 16;
-  return pages > 0 ? pages : 1;
-}
-
-int16_t galleryDexAt(uint16_t index) {
-  for (int16_t dex = 1; dex <= DEX_COUNT; dex++) {
-    if (!galleryDexVisible(dex)) continue;
-    if (index == 0) return dex;
-    index--;
-  }
-  return 0;
-}
-
 // dibuja una miniatura centrada en su celda; sil=true la pinta en tinta
 void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
   uint8_t w = b[0], h = b[1], n = b[2];
@@ -5108,185 +5032,6 @@ void drawThumb(const uint8_t *b, int x, int y, int s, bool sil) {
       gfx->fillRect(ox + c * s, oy + r * s, s, s, col);
     }
   }
-}
-
-void renderGallery() {
-  if (galleryDetail) {  // vista detalle: se redibuja siempre (animada)
-    gfx->fillScreen(UI_BG_DAY);
-    const DexEntry &d = DEX_TBL[galleryDetail];
-    bool reg = pet.isRegistered(galleryDetail);
-    bool caught = pet.isCaught(galleryDetail);
-    bool known = reg || caught;
-    char head[24];
-    snprintf(head, sizeof(head), "N.%03d %s%s", galleryDetail,
-             pet.isShinyRegistered(galleryDetail) ? "*" : "", known ? dexName(galleryDetail) : "???");
-    gfx->setTextColor(known ? d.accent : UI_INK);
-    int glen = strlen(head);
-    int gts = (glen <= 13) ? 3 : 2;  // auto-encoge nombres largos (no caben a t3)
-    gfx->setTextSize(gts);
-    gfx->setCursor(CX - glen * (gts == 3 ? 9 : 6), gts == 3 ? 56 : 60);
-    gfx->print(head);
-    if (known) {
-      char types[24];
-      typeText(types, sizeof(types), d);
-      gfx->setTextColor(battleTypeColor(d.type1));
-      gfx->setTextSize(2);
-      gfx->setCursor(CX - strlen(types) * 6, 94);
-      gfx->print(types);
-    }
-    if (galleryPmd.loaded) {
-      // animado y a color si se conoce; silueta estatica si no (estilo "?")
-      drawPmdActM(galleryPmd, PMD_IDLE, CX, 300, known ? millis() : 0, true, !known, 6);
-    } else {
-      const uint8_t *t = thumbs.get(galleryDetail);
-      if (t) drawThumb(t, CX - GAL_CELL, 135, 4, !known);
-    }
-    if (reg) {
-      const char *mark = T(S_RAISED_MARK);
-      gfx->setTextColor(UI_BAR_OK);
-      gfx->setTextSize(2);
-      gfx->setCursor(CX - strlen(mark) * 6, caught ? 354 : 366);
-      gfx->print(mark);
-    }
-    if (caught) {
-      const char *mark = T(S_CAUGHT_MARK);
-      gfx->setTextColor(UI_BAR_WARN);
-      gfx->setTextSize(2);
-      gfx->setCursor(CX - strlen(mark) * 6, reg ? 376 : 366);
-      gfx->print(mark);
-    }
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(2);
-    gfx->setCursor(CX - strlen(T(S_DETAIL_BACK)) * 6, 408);
-    gfx->print(T(S_DETAIL_BACK));
-    flushStampedFrame();
-    return;
-  }
-
-  if (!galleryDirty) return;  // la rejilla es estatica
-  galleryDirty = false;
-
-  gfx->fillScreen(UI_BG_DAY);
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - 7 * 9, 28);
-  gfx->print("POKEDEX");
-
-  char head[28];
-  snprintf(head, sizeof(head), T(S_RAISED_CAUGHT_FMT), pet.registeredCount(), pet.caughtCount());
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - strlen(head) * 6, 54);
-  gfx->print(head);
-
-  const char *regions[4] = { T(S_FILTER_ALL), "KANTO", "JOHTO", "HOENN" };
-  const char *filters[4] = { T(S_FILTER_ALL), T(S_RAISED_MARK), T(S_CAUGHT_MARK), "SHINY" };
-  for (int i = 0; i < 4; i++) {
-    int fx = 73 + i * 80;
-    uint16_t fill = (galleryRegion == i) ? UI_INK : UI_WHITE;
-    uint16_t text = (galleryRegion == i) ? UI_BG_DAY : UI_INK;
-    gfx->fillRoundRect(fx, 68, 76, 16, 5, fill);
-    gfx->drawRoundRect(fx, 68, 76, 16, 5, UI_INK);
-    gfx->setTextColor(text); gfx->setTextSize(1);
-    gfx->setCursor(fx + (76 - (int)strlen(regions[i]) * 6) / 2, 73); gfx->print(regions[i]);
-    fill = (galleryFilter == i) ? UI_INK : UI_WHITE;
-    text = (galleryFilter == i) ? UI_BG_DAY : UI_INK;
-    gfx->fillRoundRect(fx, 88, 76, 16, 5, fill);
-    gfx->drawRoundRect(fx, 88, 76, 16, 5, UI_INK);
-    gfx->setTextColor(text); gfx->setTextSize(1);
-    gfx->setCursor(fx + (76 - (int)strlen(filters[i]) * 6) / 2, 93); gfx->print(filters[i]);
-  }
-/*
-  for (int i = 0; i < 3; i++) {
-    int fx = 74 + i * 106;
-    uint16_t fill = (galleryFilter == i) ? UI_INK : UI_WHITE;
-    uint16_t text = (galleryFilter == i) ? UI_BG_DAY : UI_INK;
-    gfx->fillRoundRect(fx, 74, 96, 18, 6, fill);
-    gfx->drawRoundRect(fx, 74, 96, 18, 6, UI_INK);
-    gfx->setTextColor(text);
-    gfx->setTextSize(1);
-    gfx->setCursor(fx + (96 - (int)strlen(filters[i]) * 6) / 2, 80);
-    gfx->print(filters[i]);
-  }
-*/
-
-  for (int r = 0; r < 4; r++) {
-    for (int c = 0; c < 4; c++) {
-      int16_t dex = galleryDexAt(galleryPage * 16 + r * 4 + c);
-      if (dex <= 0) continue;
-      int x = GAL_X + c * GAL_CELL, y = GAL_Y + r * GAL_CELL;
-      const uint8_t *t = thumbs.get(dex);
-      if (t) {
-        bool reg = pet.isRegistered(dex);
-        bool caught = pet.isCaught(dex);
-        bool known = reg || caught;
-        drawThumb(t, x, y, 2, !known);
-        if (pet.isShinyRegistered(dex)) {
-          gfx->setTextColor(UI_BAR_WARN);
-          gfx->setTextSize(2);
-          gfx->setCursor(x + 62, y + 4);
-          gfx->print("*");
-        } else if (caught && !reg) {
-          gfx->setTextColor(UI_BAR_WARN);
-          gfx->setTextSize(1);
-          gfx->setCursor(x + 60, y + 6);
-          gfx->print("C");
-        }
-      } else {
-        char num[6];
-        snprintf(num, sizeof(num), "%d", dex);
-        gfx->setTextColor(UI_TRACK);
-        gfx->setTextSize(2);
-        gfx->setCursor(x + 24, y + 32);
-        gfx->print(num);
-      }
-    }
-  }
-  // puntos de pagina
-  int pages = galleryPageCount();
-  int dotX = CX - (pages - 1) * 7;
-  for (int i = 0; i < pages; i++) {
-    if (i == galleryPage) gfx->fillCircle(dotX + i * 14, 436, 4, UI_INK);
-    else gfx->drawCircle(dotX + i * 14, 436, 3, UI_INK);
-  }
-  flushStampedFrame();
-}
-
-void galleryTap(int16_t x, int16_t y) {
-  if (galleryDetail) {  // volver a la rejilla
-    galleryDetail = 0;
-    galleryPmd.unload();
-    galleryDirty = true;
-    sfxPlay(SFX_TAP);
-    return;
-  }
-  if (y < 46) {  // tocar la cabecera = salir
-    galleryOpen = false;
-    galleryPmd.unload();
-    sfxPlay(SFX_TAP);
-    return;
-  }
-  if (y >= 68 && y < GAL_Y) {
-    int f = (x - 73) / 80;
-    if (f >= 0 && f < 4 && x >= 73 + f * 80 && x <= 149 + f * 80) {
-      if (y < 86) galleryRegion = (uint8_t)f;
-      else {
-      galleryFilter = (uint8_t)f;
-      }
-      galleryPage = 0;
-      galleryDirty = true;
-      sfxPlay(SFX_TAP);
-      return;
-    }
-  }
-  if (x < GAL_X || y < GAL_Y) return;
-  int c = (x - GAL_X) / GAL_CELL, r = (y - GAL_Y) / GAL_CELL;
-  if (c < 0 || c > 3 || r < 0 || r > 3) return;
-  int16_t dex = galleryDexAt(galleryPage * 16 + r * 4 + c);
-  if (dex <= 0) return;
-  galleryDetail = dex;
-  galleryPmd.load(dex, pet.isShinyRegistered(dex));
-  sfxPlay(SFX_MENU);
-  if (pet.isRegistered(dex) || pet.isCaught(dex)) speciesChirpPlay(dex);
 }
 
 void drawBattery() {
