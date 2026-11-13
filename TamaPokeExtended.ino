@@ -31,6 +31,12 @@
 #include "src/ui/dex_screen.h"
 #include "src/ui/strength_screen.h"
 #include "src/ui/battle_screen.h"
+#include "src/ui/game_ball_screen.h"
+#include "src/ui/game_catch_screen.h"
+#include "src/ui/game_memo_screen.h"
+#include "src/ui/game_clean_screen.h"
+#include "src/ui/game_type_screen.h"
+#include "src/ui/game_screen_common.h"
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
@@ -1021,7 +1027,7 @@ void handleTouch() {
       gameTap(x, y);         // ball: cuenta al tocar, no al soltar
       swallowGesture = true; // evita doble tap al levantar el dedo
     } else if (!swallowGesture && gameOpen && gameMode == 1) {
-      catchTap(x, y);        // juego de reflejos: cuenta al tocar, no al soltar
+      gameCatchScreen.handleTap(x, y);  // cuenta al tocar, no al soltar
       swallowGesture = true; // evita doble tap al levantar el dedo
     }
   } else if (pressed) {  // sigue apoyado
@@ -1059,8 +1065,6 @@ void maybeOfferMorning(uint32_t now);
 uint32_t pmdActTotalMs(const PmdAct &a);
 void startCleanGame();
 void startTypeGame();
-void cleanTap(int16_t x, int16_t y);
-void typeTap(int16_t x, int16_t y);
 void expeditionCardTap(int16_t x, int16_t y);
 uint32_t expeditionNowEpoch();
 bool expeditionHudVisible();
@@ -2053,47 +2057,12 @@ int ballHitRadius() {
 }
 
 void gameTap(int16_t x, int16_t y) {
-  if (gameMode == 1) {
-    catchTap(x, y);
-    return;
-  }
-  if (gameMode == 2) {
-    memoTap(x, y);
-    return;
-  }
-  if (gameMode == 3) {
-    cleanTap(x, y);
-    return;
-  }
-  if (gameMode == 4) {
-    typeTap(x, y);
-    return;
-  }
-  if (gameOverUntil) return;
-  if (y < 72) {  // tocar la cabecera = abandonar sin premio
-    gameOpen = false;
-    sfxPlay(SFX_TAP);
-    return;
-  }
-  float dx = ballX - x, dy = ballY - y;
-  int hitRadius = ballHitRadius();
-  if (dx * dx + dy * dy < hitRadius * hitRadius) {  // toque a la bola!
-    uint32_t now = millis();
-    if (now - ballLastHitAt < 260 || ballVY < -0.25f) return;
-    gameScore++;
-    sfxPlay(SFX_MINIGAME_OK);
-    float lift = 4.65f + (gameScore > 16 ? 1.7f : gameScore * 0.11f);
-    ballVY = -lift;
-    float drift = 0.38f + (gameScore >= 6 ? 0.08f : 0.0f) + (gameScore >= 14 ? 0.10f : 0.0f);
-    float chaos = ((int)random(17) - 8) * 0.26f;
-    ballVX += dx * drift + chaos;
-    if (random(100) < 28) ballVX = -ballVX * (0.72f + random(45) * 0.01f);
-    if (ballVX > 11.5f) ballVX = 11.5f;
-    if (ballVX < -11.5f) ballVX = -11.5f;
-    hitX = ballX;
-    hitY = ballY;
-    hitTime = now;
-    ballLastHitAt = now;
+  switch (gameMode) {
+    case 1: gameCatchScreen.handleTap(x, y); break;
+    case 2: gameMemoScreen.handleTap(x, y); break;
+    case 3: gameCleanScreen.handleTap(x, y); break;
+    case 4: gameTypeScreen.handleTap(x, y); break;
+    default: gameBallScreen.handleTap(x, y); break;
   }
 }
 
@@ -2104,24 +2073,6 @@ void finishCatchGame() {
   gameOverUntil = millis() + 4000;
 }
 
-void catchTap(int16_t x, int16_t y) {
-  if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
-  int dx = x - catchX, dy = y - catchY;
-  if (dx * dx + dy * dy <= 52 * 52) {
-    gameScore++;
-    hitX = catchX;
-    hitY = catchY;
-    hitTime = millis();
-    sfxPlay(SFX_MINIGAME_OK);
-    spawnCatchTarget();
-  } else if (++gameMisses >= 3) {
-    finishCatchGame();
-  } else {
-    sfxPlay(SFX_MINIGAME_BAD);
-  }
-}
-
 void finishMemoGame() {
   gameScore = memoRounds;
   gameNewHi = (memoRounds > pet.memoHi);
@@ -2130,45 +2081,8 @@ void finishMemoGame() {
   gameOverUntil = millis() + 4000;
 }
 
-int memoPadAt(int16_t x, int16_t y) {
-  const int16_t px[4] = { 142, 324, 142, 324 };
-  const int16_t py[4] = { 164, 164, 318, 318 };
-  for (int i = 0; i < 4; i++) {
-    int dx = x - px[i], dy = y - py[i];
-    if (dx * dx + dy * dy <= 54 * 54) return i;
-  }
-  return -1;
-}
-
 void memoPadSound(uint8_t pad) {
   if (pad < 4) sfxPlay((uint8_t)(SFX_MEMO_PAD_0 + pad));
-}
-
-void memoTap(int16_t x, int16_t y) {
-  if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
-  if (memoShowing || memoFailUntil || deadlineActive(millis(), memoTurnUntil)) return;
-  int pad = memoPadAt(x, y);
-  if (pad < 0) return;
-  if (pad != memoSeq[memoInput]) {
-    memoFlashPad = pad;
-    memoFlashGood = false;
-    memoFlashUntil = millis() + 620;
-    memoHintPad = memoSeq[memoInput];
-    memoFailUntil = memoFlashUntil;
-    sfxPlay(SFX_MINIGAME_BAD);
-    return;
-  }
-  memoFlashPad = pad;
-  memoFlashGood = true;
-  memoFlashUntil = millis() + 180;
-  memoPadSound((uint8_t)pad);
-  memoInput++;
-  if (memoInput >= memoLen) {
-    memoRounds++;
-    if (memoLen >= 14) finishMemoGame();
-    else startMemoRound();
-  }
 }
 
 void finishCleanGame() {
@@ -2178,51 +2092,11 @@ void finishCleanGame() {
   gameOverUntil = millis() + 4000;
 }
 
-void cleanTap(int16_t x, int16_t y) {
-  if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
-  for (uint8_t i = 0; i < 4; i++) {
-    if (!cleanAlive[i]) continue;
-    int dx = x - cleanX[i], dy = y - cleanY[i];
-    if (dx * dx + dy * dy <= 38 * 38) {
-      cleanAlive[i] = false;
-      if (cleanActive) cleanActive--;
-      gameScore++;
-      hitX = cleanX[i];
-      hitY = cleanY[i];
-      hitTime = millis();
-      sfxPlay(SFX_MINIGAME_OK);
-      return;
-    }
-  }
-  if (++gameMisses >= 3) finishCleanGame();
-  else sfxPlay(SFX_MINIGAME_BAD);
-}
-
 void finishTypeGame() {
   gameNewHi = (gameScore > pet.typeHi);
   gameGain = pet.applyTypeResult(gameScore);
   sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
   gameOverUntil = millis() + 4000;
-}
-
-void typeTap(int16_t x, int16_t y) {
-  if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
-  int idx = -1;
-  for (int i = 0; i < 3; i++) {
-    int by = 210 + i * 60;
-    if (x >= 70 && x <= 396 && y >= by - 8 && y <= by + 56) idx = i;
-  }
-  if (idx < 0) return;
-  if ((uint8_t)idx == typeCorrect) {
-    gameScore++;
-    sfxPlay(SFX_MINIGAME_OK);
-    nextTypeQuestion();
-  } else {
-    if (++gameMisses >= 3) finishTypeGame();
-    else sfxPlay(SFX_MINIGAME_BAD);
-  }
 }
 
 void stepGame() {
@@ -2292,91 +2166,6 @@ void drawGameScene() {
   gfx->fillRect(0, hor, 466, 466 - hor, soil);
 }
 
-void drawGameResult(const char *recordFmt, uint16_t record, StrId gainFmt) {
-  drawGameScene();
-  if (deadlineReached(millis(), gameOverUntil)) {
-    gameOpen = false;
-    return;
-  }
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
-  uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
-  char buf[22];
-  snprintf(buf, sizeof(buf), T(S_SCORE_FMT), gameScore);
-  gfx->setTextColor(ink);
-  gfx->setTextSize(4);
-  gfx->setCursor(CX - strlen(buf) * 12, 148);
-  gfx->print(buf);
-  char gain[18];
-  snprintf(gain, sizeof(gain), T(gainFmt), gameGain);
-  gfx->setTextColor(gainFmt == S_DEF_GAIN_FMT ? 0x4C98 : (gainFmt == S_HYG_GAIN_FMT ? UI_BAR_OK : UI_BAR_WARN));
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(gain) * 9, 204);
-  gfx->print(gain);
-  gfx->setTextSize(2);
-  if (gameNewHi && gameScore > 0) {
-    gfx->setTextColor(UI_BAR_WARN);
-    gfx->setCursor(CX - strlen(T(S_NEW_RECORD)) * 6, 256);
-    gfx->print(T(S_NEW_RECORD));
-  } else {
-    char rec[20];
-    snprintf(rec, sizeof(rec), recordFmt, record);
-    gfx->setTextColor(ink);
-    gfx->setCursor(CX - strlen(rec) * 6, 256);
-    gfx->print(rec);
-  }
-  flushStampedFrame();
-}
-
-void renderCatchGame() {
-  uint32_t now = millis();
-  if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.catchHi, S_SPD_GAIN_FMT);
-    return;
-  }
-  if (deadlineReached(now, catchUntil) || gameMisses >= 3) {
-    finishCatchGame();
-    return;
-  }
-  if (deadlineReached(now, catchTargetUntil)) {
-    if (++gameMisses >= 3) {
-      finishCatchGame();
-      return;
-    }
-    spawnCatchTarget();
-  }
-  drawGameScene();
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
-  uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
-  gfx->setTextColor(ink);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(T(S_CATCH_TITLE)) * 9, 32);
-  gfx->print(T(S_CATCH_TITLE));
-  char score[16], rec[16];
-  snprintf(score, sizeof(score), T(S_SCORE_FMT), gameScore);
-  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.catchHi);
-  gfx->setTextSize(2);
-  gfx->setCursor(50, 78);
-  gfx->print(score);
-  gfx->setCursor(294, 78);
-  gfx->print(rec);
-  for (int i = 0; i < 3; i++) {
-    if (i < 3 - gameMisses) gfx->fillCircle(180 + i * 28, 104, 6, UI_BAR_BAD);
-    else gfx->drawCircle(180 + i * 28, 104, 6, UI_TRACK);
-  }
-  const char *const *icon = catchIcon == 0 ? SPR_ICON_FOOD : (catchIcon == 1 ? SPR_ICON_BERRY_B : SPR_ICON_BERRY_G);
-  gfx->fillCircle(catchX, catchY, 34, UI_WHITE);
-  gfx->drawCircle(catchX, catchY, 36, UI_BAR_WARN);
-  drawMap(icon, 16, catchX - 24, catchY - 24, 3, false);
-  int bw = 280;
-  int fw = (int)((uint32_t)bw * (catchUntil - now) / 20000);
-  if (fw < 0) fw = 0;
-  gfx->fillRoundRect(CX - bw / 2, 362, bw, 16, 5, UI_TRACK);
-  if (fw > 2) gfx->fillRoundRect(CX - bw / 2, 362, fw, 16, 5, UI_BAR_OK);
-  uint32_t ht = millis() - hitTime;
-  if (hitTime && ht < 220) gfx->drawCircle((int)hitX, (int)hitY, 42 + ht / 8, UI_BAR_WARN);
-  flushStampedFrame();
-}
-
 void stepMemoGame() {
   uint32_t now = millis();
   if (memoFailUntil) {
@@ -2405,277 +2194,14 @@ void stepMemoGame() {
   memoNextAt = now + 480;
 }
 
-void renderMemoGame() {
-  if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.memoHi, S_DEF_GAIN_FMT);
-    return;
-  }
-  stepMemoGame();
-  drawGameScene();
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
-  uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
-  char roundBuf[18], rec[16];
-  snprintf(roundBuf, sizeof(roundBuf), T(S_ROUND_FMT), memoRounds + 1);
-  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.memoHi);
-  gfx->setTextColor(ink);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(T(S_GAME_MEMO)) * 9, 34);
-  gfx->print(T(S_GAME_MEMO));
-  gfx->setTextSize(2);
-  gfx->setCursor(60, 82);
-  gfx->print(roundBuf);
-  gfx->setCursor(310, 82);
-  gfx->print(rec);
-  const int16_t px[4] = { 142, 324, 142, 324 };
-  const int16_t py[4] = { 164, 164, 318, 318 };
-  const uint16_t col[4] = { UI_BAR_BAD, UI_BAR_WARN, 0x4C98, UI_BAR_OK };
-  int active = memoShowing ? memoActivePad : (memoFailUntil ? memoHintPad : -1);
-  for (int i = 0; i < 4; i++) {
-    uint16_t fill = i == active ? lerp565(col[i], UI_WHITE, 5, 8) : col[i];
-    gfx->fillCircle(px[i], py[i], 48, fill);
-    gfx->drawCircle(px[i], py[i], 52, ink);
-    if (i == active) {
-      int pulse = 56 + (int)((millis() / 70) % 5);
-      gfx->drawCircle(px[i], py[i], pulse, col[i]);
-    }
-    if (i == memoFlashPad && deadlineActive(millis(), memoFlashUntil)) {
-      gfx->drawCircle(px[i], py[i], 60, memoFlashGood ? UI_BAR_OK : UI_BAR_BAD);
-      gfx->drawCircle(px[i], py[i], 64, memoFlashGood ? UI_BAR_OK : UI_BAR_BAD);
-    }
-  }
-  char phase[28];
-  if (memoFailUntil) snprintf(phase, sizeof(phase), "%s", T(S_MEMO_WRONG));
-  else if (memoShowing) snprintf(phase, sizeof(phase), "%s", T(S_MEMO_WATCH));
-  else snprintf(phase, sizeof(phase), T(S_MEMO_TURN_FMT), memoInput + 1, memoLen);
-  // Freier Streifen zwischen den oberen und unteren Pads: dadurch bleibt die
-  // Anleitung auf dem runden Display klar lesbar und liegt nicht auf Farben.
-  gfx->fillRoundRect(78, 230, 310, 24, 7, night ? UI_BG_NIGHT : UI_BG_DAY);
-  gfx->drawRoundRect(78, 230, 310, 24, 7, ink);
-  gfx->setTextColor(memoFailUntil ? UI_BAR_BAD : (memoShowing ? UI_BAR_WARN : UI_BAR_OK));
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - (int)strlen(phase) * 6, 234);
-  gfx->print(phase);
-  flushStampedFrame();
-}
-
-void renderCleanGame() {
-  uint32_t now = millis();
-  if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.cleanHi, S_HYG_GAIN_FMT);
-    return;
-  }
-  if (deadlineReached(now, cleanUntil) || gameMisses >= 3) {
-    finishCleanGame();
-    return;
-  }
-  if (deadlineReached(now, cleanSpawnAt)) {
-    if (cleanActive < 4) spawnCleanSpot();
-    cleanSpawnAt = now + 720 - (gameScore > 12 ? 260 : gameScore * 20);
-  }
-  drawGameScene();
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
-  uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
-  gfx->setTextColor(ink);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(T(S_CLEAN_TITLE)) * 9, 32);
-  gfx->print(T(S_CLEAN_TITLE));
-  char score[16], rec[16];
-  snprintf(score, sizeof(score), T(S_SCORE_FMT), gameScore);
-  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.cleanHi);
-  gfx->setTextSize(2);
-  gfx->setCursor(50, 78);
-  gfx->print(score);
-  gfx->setCursor(294, 78);
-  gfx->print(rec);
-  for (int i = 0; i < 3; i++) {
-    if (i < 3 - gameMisses) gfx->fillCircle(180 + i * 28, 104, 6, UI_BAR_BAD);
-    else gfx->drawCircle(180 + i * 28, 104, 6, UI_TRACK);
-  }
-  for (uint8_t i = 0; i < 4; i++) {
-    if (!cleanAlive[i]) continue;
-    gfx->fillCircle(cleanX[i], cleanY[i], 26, C565(0x8a, 0x66, 0x45));
-    gfx->drawCircle(cleanX[i], cleanY[i], 28, UI_INK);
-    gfx->fillCircle(cleanX[i] - 8, cleanY[i] - 8, 5, C565(0x62, 0x45, 0x2e));
-    gfx->fillCircle(cleanX[i] + 10, cleanY[i] + 4, 6, C565(0x62, 0x45, 0x2e));
-  }
-  int bw = 280;
-  int fw = (int)((uint32_t)bw * (cleanUntil - now) / 18000);
-  if (fw < 0) fw = 0;
-  gfx->fillRoundRect(CX - bw / 2, 362, bw, 16, 5, UI_TRACK);
-  if (fw > 2) gfx->fillRoundRect(CX - bw / 2, 362, fw, 16, 5, UI_BAR_OK);
-  uint32_t ht = millis() - hitTime;
-  if (hitTime && ht < 220) gfx->drawCircle((int)hitX, (int)hitY, 42 + ht / 8, UI_BAR_OK);
-  flushStampedFrame();
-}
-
-void renderTypeGame() {
-  uint32_t now = millis();
-  if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.typeHi, S_ATK_GAIN_FMT);
-    return;
-  }
-  if (deadlineReached(now, typeUntil)) {
-    if (++gameMisses >= 3) {
-      finishTypeGame();
-      return;
-    }
-    sfxPlay(SFX_MINIGAME_BAD);
-    nextTypeQuestion();
-  }
-  drawGameScene();
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
-  uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
-  gfx->setTextColor(ink);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(T(S_TYPE_TITLE)) * 9, 32);
-  gfx->print(T(S_TYPE_TITLE));
-  char score[16], rec[16];
-  snprintf(score, sizeof(score), T(S_SCORE_FMT), gameScore);
-  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.typeHi);
-  gfx->setTextSize(2);
-  gfx->setCursor(50, 78);
-  gfx->print(score);
-  gfx->setCursor(294, 78);
-  gfx->print(rec);
-  for (int i = 0; i < 3; i++) {
-    if (i < 3 - gameMisses) gfx->fillCircle(180 + i * 28, 104, 6, UI_BAR_BAD);
-    else gfx->drawCircle(180 + i * 28, 104, 6, UI_TRACK);
-  }
-
-  const char *enemy = battleTypeName(typeEnemy);
-  gfx->fillRoundRect(118, 126, 230, 54, 14, lerp565(battleTypeColor(typeEnemy), UI_WHITE, 4, 8));
-  gfx->drawRoundRect(118, 126, 230, 54, 14, ink);
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(3);
-  gfx->setCursor(CX - strlen(enemy) * 9, 143);
-  gfx->print(enemy);
-
-  for (int i = 0; i < 3; i++) {
-    int bx = 88;
-    int by = 210 + i * 60;
-    const char *label = battleTypeName(typeChoice[i]);
-    gfx->fillRoundRect(bx, by, 290, 48, 12, lerp565(battleTypeColor(typeChoice[i]), UI_WHITE, 5, 8));
-    gfx->drawRoundRect(bx, by, 290, 48, 12, ink);
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(2);
-    gfx->setCursor(bx + (290 - (int)strlen(label) * 12) / 2, by + 17);
-    gfx->print(label);
-  }
-  int bw = 280;
-  int fw = (int)((uint32_t)bw * (typeUntil - now) / 4200);
-  if (fw < 0) fw = 0;
-  gfx->fillRoundRect(CX - bw / 2, 392, bw, 14, 5, UI_TRACK);
-  if (fw > 2) gfx->fillRoundRect(CX - bw / 2, 392, fw, 14, 5, UI_BAR_OK);
-  flushStampedFrame();
-}
-
 void renderGame() {
-  // sin fillScreen(NEGRO): drawGameScene cubre los 466x466 completos. Si el
-  // DMA del flush anterior aun lee el buffer, vera contenido valido (no negro
-  // a medio pintar), que era el parpadeo a 25 fps.
-  bool night = sceneHour() < 6 || sceneHour() >= 20;
-  uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
-
-  if (gameMode == 1) {
-    renderCatchGame();
-    return;
+  switch (gameMode) {
+    case 1: gameCatchScreen.render(); break;
+    case 2: gameMemoScreen.render(); break;
+    case 3: gameCleanScreen.render(); break;
+    case 4: gameTypeScreen.render(); break;
+    default: gameBallScreen.render(); break;
   }
-  if (gameMode == 2) {
-    renderMemoGame();
-    return;
-  }
-  if (gameMode == 3) {
-    renderCleanGame();
-    return;
-  }
-  if (gameMode == 4) {
-    renderTypeGame();
-    return;
-  }
-
-  if (gameOverUntil) {
-    drawGameScene();
-    if (deadlineReached(millis(), gameOverUntil)) {
-      gameOpen = false;
-      return;
-    }
-    char buf[22];
-    snprintf(buf, sizeof(buf), T(S_SCORE_FMT), gameScore);
-    gfx->setTextColor(ink);
-    gfx->setTextSize(4);
-    gfx->setCursor(CX - strlen(buf) * 12, 160);
-    gfx->print(buf);
-    gfx->setTextSize(2);
-    if (gameNewHi && gameScore > 0) {
-      gfx->setTextColor(UI_BAR_WARN);
-      gfx->setCursor(CX - strlen(T(S_NEW_RECORD)) * 6, 214);
-      gfx->print(T(S_NEW_RECORD));
-    } else {
-      char rec[20];
-      snprintf(rec, sizeof(rec), T(S_RECORD_FMT), pet.gameHi);
-      gfx->setTextColor(ink);
-      gfx->setCursor(CX - strlen(rec) * 6, 214);
-      gfx->print(rec);
-    }
-    const char *msg = gameScore >= 10 ? T(S_GREAT_JOY) : T(S_PLUS_JOY);
-    gfx->setTextColor(ink);
-    gfx->setCursor(CX - strlen(msg) * 6, 250);
-    gfx->print(msg);
-    flushStampedFrame();
-    return;
-  }
-
-  drawGameScene();
-  stepGame();
-
-  // marcador, record y vidas
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%u", gameScore);
-  gfx->setTextColor(ink);
-  gfx->setTextSize(4);
-  gfx->setCursor(CX - strlen(buf) * 12, 30);
-  gfx->print(buf);
-  char rec[12];
-  snprintf(rec, sizeof(rec), T(S_REC_FMT), pet.gameHi);
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - strlen(rec) * 6, 76);
-  gfx->print(rec);
-  for (int i = 0; i < 3; i++) {
-    if (i < 3 - gameMisses) gfx->fillCircle(180 + i * 28, 104, 6, UI_BAR_BAD);
-    else gfx->drawCircle(180 + i * 28, 104, 6, UI_TRACK);
-  }
-
-  if (pmd.loaded) {
-    uint8_t act = (ballX > gamePetX + 4) ? PMD_WALKR : (ballX < gamePetX - 4) ? PMD_WALKL : PMD_IDLE;
-    if (!pmd.has(act)) act = PMD_IDLE;
-    drawPmdAct(act, (int)gamePetX, 394, millis(), true, false, 3);
-  } else if (mon.loaded) {
-    int s = (mon.h * 2 > 130) ? 1 : 2;
-    int w = mon.w * s, h = mon.h * s;
-    uint16_t fm = mon.frameMs ? mon.frameMs : 100;
-    uint16_t fi = (millis() / fm) % mon.frames;
-    const uint8_t *fr = mon.data + (uint32_t)fi * mon.w * mon.h;
-    int px = (int)gamePetX - w / 2, py = 394 - h;
-    for (int r = 0; r < mon.h; r++)
-      for (int c = 0; c < mon.w; c++) {
-        uint8_t idx = fr[r * mon.w + c];
-        if (idx == 0xFF) continue;
-        gfx->fillRect(px + c * s, py + r * s, s, s, mon.pal[idx]);
-      }
-  }
-
-  // anillo de impacto que se expande y desvanece (feedback suave del golpe)
-  uint32_t ht = millis() - hitTime;
-  if (hitTime && ht < 260) {
-    int rad = 22 + (int)(ht / 6);
-    gfx->drawCircle((int)hitX, (int)hitY, rad, C565(0xff, 0xe7, 0x9f));
-    gfx->drawCircle((int)hitX, (int)hitY, rad - 2, C565(0xff, 0xd9, 0x8a));
-  }
-
-  // la pokeball
-  drawMap(SPR_ICON_PLAY, 16, (int)ballX - 24, (int)ballY - 24, 3, false);
-
-  flushStampedFrame();
 }
 
 // ---------- combate salvaje manual ----------
