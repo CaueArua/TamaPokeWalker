@@ -155,11 +155,77 @@ void Pet::syncClock(uint32_t nowEpoch) {
   save();
 }
 
+// Remove o Pokémon que estava ativo (em qualquer slot), puxa os seguintes para cima
+// e carrega o novo líder da fila (slot 0) como ativo
+bool Pet::promoteNextFromParty() {
+  uint8_t removedSlot = activePartySlot;
+  if (removedSlot >= PARTY_SIZE) removedSlot = 0;
+
+  // 1. Puxa os slots abaixo do removido 1 posição para cima
+  for (uint8_t i = removedSlot; i < PARTY_SIZE - 1; i++) {
+    party[i] = party[i + 1];
+  }
+  // 2. Zera o último slot (índice 5) deixando-o livre
+  party[PARTY_SIZE - 1] = PartySlot();
+
+  // 3. Procura o primeiro slot válido restante na Party (priorizando o slot 0)
+  int8_t nextIdx = -1;
+  for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+    if (party[i].speciesId > 0 && party[i].speciesId <= DEX_COUNT) {
+      nextIdx = (int8_t)i;
+      break;
+    }
+  }
+
+  if (nextIdx >= 0) {
+    activePartySlot = (uint8_t)nextIdx;
+    const PartySlot &next = party[activePartySlot];
+    speciesId = next.speciesId;
+    prevSpeciesId = -1;
+    shiny = next.shiny;
+    memcpy(nick, next.nick, sizeof(nick));
+    ageMinutes = next.ageMinutes;
+    geneAtk = next.geneAtk;
+    geneDef = next.geneDef;
+    geneSpe = next.geneSpe;
+    trAtk = next.trAtk;
+    trDef = next.trDef;
+    trSpe = next.trSpe;
+    bond = next.bond;
+    fullness = next.fullness;
+    joy = next.joy;
+    energy = next.energy;
+    hygiene = next.hygiene;
+    weight = next.weight;
+    careMistakes = next.careMistakes;
+    medals = next.medals;
+    berryKnown = next.berryKnown;
+    poops = 0;
+    sleeping = false;
+    ceremony = CER_NONE;
+
+    save();
+    saveParty();
+    return true;
+  }
+
+  // Party ficou totalmente vazia (0/6)
+  activePartySlot = 0;
+  saveParty();
+  return false;
+}
+
+
 bool Pet::update(uint32_t nowMs) {
   ensureStepDay();
   // fin de ceremonia: la criatura se va y queda un huevo nuevo
-  if (ceremony != CER_NONE && deadlineReached(millis(), ceremonyUntil)) {
-    newEgg();
+  if (ceremony != CER_NONE && !deadlineActive(nowMs, ceremonyUntil)) {
+    uint8_t finishedCer = ceremony;
+    ceremony = CER_NONE;
+    if (finishedCer == CER_RELEASE && promoteNextFromParty()) {
+      return true; // Próximo Pokémon da Party assumiu o lugar
+    }
+    newEgg(); // Gera um novo ovo se a Party estiver vazia (ou se fugiu/aposentou)
     return true;
   }
   bool changed = false;
@@ -588,7 +654,8 @@ uint16_t Pet::applyDexRewards() {
   return reached;
 }
 
-void Pet::registerCaught(int16_t dex, bool shinyVariant) {
+void Pet::registerCaught(int16_t dex, bool shinyVariant, uint8_t wildLevel) {
+  addToParty(dex, shinyVariant, wildLevel);
   if (dex < 1 || dex > DEX_COUNT) return;
   bool wasKnown = isRegistered(dex) || isCaught(dex);
   dexCaught[(dex - 1) >> 3] |= (1 << ((dex - 1) & 7));
@@ -629,7 +696,6 @@ bool Pet::tryCatchWild(int16_t wildDex, uint8_t wildLevel, uint8_t petLevel, boo
   uint8_t chance = catchChanceForWild(wildDex, wildLevel, petLevel, closeWin);
   if (chance == 0) return false;
   if ((luckRoll % 100) < chance) {
-    registerCaught(wildDex, shinyVariant);
     joy = clamp100((int)joy + 4);
     addBond(1);
     save();
@@ -643,7 +709,6 @@ bool Pet::tryRespectCatchWild(int16_t wildDex, uint8_t wildLevel, uint8_t petLev
   uint8_t chance = respectCatchChanceForWild(wildDex, wildLevel, petLevel);
   if (chance == 0) return false;
   if ((luckRoll % 100) < chance) {
-    registerCaught(wildDex, shinyVariant);
     save();
     return true;
   }
@@ -846,9 +911,9 @@ bool Pet::canEvolveNow() const {
 }
 
 bool Pet::wantEvolveButton() const {
-  if (sleeping || !hasEvolutionPath(speciesId) || !evolutionLevelReached()) return false;
-  if (level() >= 100) return ageMinutes >= evoDeclinedAge;
-  return level() > evoDeclinedLv;
+  if (isEgg() || sleeping || evolving() || ceremony != CER_NONE) return false;
+  if (level() < evoDeclinedLv && ageMinutes < evoDeclinedAge) return false;
+  return canEvolveNow(); // Só mostra o botão na tela quando nível, amizade e saúde estiverem prontos!
 }
 
 void Pet::declineEvolve() {
@@ -1633,6 +1698,7 @@ void Pet::save() {
   prefs.putUChar("edlv", evoDeclinedLv);
   prefs.putUInt("edage", evoDeclinedAge);
   prefs.putString("nick", nick);
+  saveParty();
 }
 
 void Pet::load() {
@@ -1756,4 +1822,158 @@ void Pet::load() {
     lastEnd = pendingCeremony;
     newEgg();
   }
+  loadParty();
 }
+
+void Pet::syncToParty() {
+  if (activePartySlot >= PARTY_SIZE) activePartySlot = 0;
+  PartySlot &s = party[activePartySlot];
+  if (isEgg()) {
+    s.speciesId = 0;
+    return;
+  }
+  s.speciesId = speciesId;
+  s.shiny = shiny;
+  memcpy(s.nick, nick, sizeof(nick));
+  s.ageMinutes = ageMinutes;
+  s.geneAtk = geneAtk;
+  s.geneDef = geneDef;
+  s.geneSpe = geneSpe;
+  s.trAtk = trAtk;
+  s.trDef = trDef;
+  s.trSpe = trSpe;
+  s.bond = bond;
+  s.fullness = fullness;
+  s.joy = joy;
+  s.energy = energy;
+  s.hygiene = hygiene;
+  s.weight = weight;
+  s.careMistakes = careMistakes;
+  s.medals = medals;
+  s.berryKnown = berryKnown;
+}
+
+bool Pet::switchPartySlot(uint8_t slot) {
+  if (slot >= PARTY_SIZE || slot == activePartySlot) return false;
+  if (party[slot].speciesId <= 0 || party[slot].speciesId > DEX_COUNT) return false;
+  if (isEgg() || evolving() || ceremony != CER_NONE) return false;
+
+  // 1. Guarda o progresso atual (nível, treino, amizade) no slot que estava ativo
+  syncToParty();
+
+  // 2. Carrega os dados do novo Pokémon escolhido para o Pet principal
+  activePartySlot = slot;
+  const PartySlot &next = party[slot];
+  speciesId = next.speciesId;
+  prevSpeciesId = -1;
+  shiny = next.shiny;
+  memcpy(nick, next.nick, sizeof(nick));
+  ageMinutes = next.ageMinutes;
+  geneAtk = next.geneAtk;
+  geneDef = next.geneDef;
+  geneSpe = next.geneSpe;
+  trAtk = next.trAtk;
+  trDef = next.trDef;
+  trSpe = next.trSpe;
+  bond = next.bond;
+  fullness = next.fullness;
+  joy = next.joy;
+  energy = next.energy;
+  hygiene = next.hygiene;
+  weight = next.weight;
+  careMistakes = next.careMistakes;
+  medals = next.medals;
+  berryKnown = next.berryKnown;
+  poops = 0;
+  sleeping = false;
+
+  // 3. Salva ambos na NVS
+  save();
+  saveParty();
+  return true;
+}
+
+int8_t Pet::addToParty(int16_t dex, bool isShiny, uint8_t lv) {
+  syncToParty();
+  for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+    if (party[i].speciesId <= 0) {
+      PartySlot &s = party[i];
+      s = PartySlot(); // zera com padrões
+      s.speciesId = dex;
+      s.shiny = isShiny;
+      s.ageMinutes = (uint32_t)(lv > 1 ? lv - 1 : 0) * MINUTES_PER_LEVEL;
+      s.geneAtk = random(90, 111);
+      s.geneDef = random(90, 111);
+      s.geneSpe = random(90, 111);
+      saveParty();
+      return (int8_t)i;
+    }
+  }
+  return -1; // Party cheia (6/6)
+}
+
+bool Pet::isPartyFull() const {
+  for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+    if (party[i].speciesId <= 0) return false;
+  }
+  return true;
+}
+
+
+bool Pet::replacePartySlot(uint8_t slot, int16_t dex, bool isShiny, uint8_t lv) {
+  if (slot >= PARTY_SIZE || dex <= 0 || dex > DEX_COUNT) return false;
+  
+  PartySlot &s = party[slot];
+  s = PartySlot(); // Limpa os dados antigos do slot
+  s.speciesId = dex;
+  s.shiny = isShiny;
+  s.ageMinutes = (uint32_t)(lv > 1 ? lv - 1 : 0) * MINUTES_PER_LEVEL;
+  s.geneAtk = random(90, 111);
+  s.geneDef = random(90, 111);
+  s.geneSpe = random(90, 111);
+
+  // Se você escolheu substituir o Pokémon que estava ativo na tela, atualiza ele na hora!
+  if (slot == activePartySlot) {
+    speciesId = s.speciesId;
+    prevSpeciesId = -1;
+    shiny = s.shiny;
+    memset(nick, 0, sizeof(nick));
+    ageMinutes = s.ageMinutes;
+    geneAtk = s.geneAtk;
+    geneDef = s.geneDef;
+    geneSpe = s.geneSpe;
+    trAtk = trDef = trSpe = 0;
+    bond = 0;
+    fullness = joy = energy = 80;
+    hygiene = 100;
+    weight = 0;
+    careMistakes = 0;
+    medals = 0;
+    berryKnown = false;
+    poops = 0;
+    sleeping = false;
+    save();
+  }
+
+  saveParty();
+  return true;
+}
+
+void Pet::saveParty() {
+  syncToParty();
+  prefs.putUChar("pSlot", activePartySlot);
+  prefs.putBytes("pData", party, sizeof(party));
+}
+
+void Pet::loadParty() {
+  activePartySlot = prefs.getUChar("pSlot", 0);
+  if (activePartySlot >= PARTY_SIZE) activePartySlot = 0;
+  size_t len = prefs.getBytes("pData", party, sizeof(party));
+  if (len != sizeof(party)) {
+    memset(party, 0, sizeof(party));
+    syncToParty(); // Inicializa o slot 0 com o Pokémon atual
+  }
+}
+
+
+

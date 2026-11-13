@@ -14,10 +14,11 @@ bool PmdMon::load(uint16_t dexNum, bool shiny) {
   if (!sdReady) return false;
 
   char path[28];
-  snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", dexNum);
+  uint16_t fileId = (dexNum > 0 && dexNum <= DEX_COUNT) ? DEX_TBL[dexNum].natNum : dexNum;
+  snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", fileId);
   File f = FFat.open(path, FILE_READ);
   if (!f && shiny) {  // sin shiny PMD: usa el normal
-    snprintf(path, sizeof(path), "/mons/p%03u.bin", dexNum);
+    snprintf(path, sizeof(path), "/mons/p%03u.bin", fileId);
     f = FFat.open(path, FILE_READ);
   }
   if (!f) return false;

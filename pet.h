@@ -109,6 +109,25 @@ struct BattleReward {
   uint8_t amount = 0;
 };
 
+// --- INÍCIO DA ADIÇÃO PARA PARTY DE 6 POKÉMON ---
+#define PARTY_SIZE 6
+
+struct PartySlot {
+  int16_t speciesId = 0; // 0 = slot vazio, 1..DEX_COUNT = espécie
+  bool shiny = false;
+  char nick[12] = "";
+  uint32_t ageMinutes = 0; // define o nível atual
+  uint8_t geneAtk = 100, geneDef = 100, geneSpe = 100;
+  uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  uint8_t bond = 0;
+  uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
+  uint8_t weight = 0;
+  uint8_t careMistakes = 0;
+  uint16_t medals = 0;
+  bool berryKnown = false;
+};
+// --- FIM DA ADIÇÃO ---
+
 class Pet {
 public:
   // Estadisticas 0..100
@@ -178,6 +197,20 @@ public:
   uint8_t stepMilestoneMask = 0;
   bool saveLoadedFromNvs = false;
   bool saveCreatedThisBoot = false;
+
+  // Sistema de Party (6 slots)
+  uint8_t activePartySlot = 0;
+  PartySlot party[PARTY_SIZE];
+
+  void syncToParty();                          // Salva o estado do Pet ativo no slot atual da Party
+  bool switchPartySlot(uint8_t slot);          // Troca o Pet ativo por outro slot da Party (0..5)
+  bool promoteNextFromParty(); // promove o 1 a ativo
+  int8_t addToParty(int16_t dex, bool isShiny, uint8_t lv = 1); // Adiciona um capturado na Party (-1 se cheia)
+  bool isPartyFull() const;
+  bool replacePartySlot(uint8_t slot, int16_t dex, bool isShiny, uint8_t lv);
+
+  void saveParty();                            // Grava os 6 slots na NVS (chave separada)
+  void loadParty();   
 
   void begin();                 // carga estado de NVS (o crea el primer huevo)
   bool update(uint32_t nowMs);  // true cuando avanzo el estado del bicho
@@ -300,7 +333,7 @@ public:
   uint8_t collectionRank() const;
   uint8_t unlockedCollectionFrameCount() const;
   bool setCollectionFrame(uint8_t frame);
-  void registerCaught(int16_t dex, bool shinyVariant = false);
+  void registerCaught(int16_t dex, bool shinyVariant = false, uint8_t wildLevel = 1);
   uint16_t nextDexGoal() const;
   uint16_t applyDexRewards();
   uint8_t catchChanceForWild(int16_t wildDex, uint8_t wildLevel, uint8_t petLevel, bool closeWin) const;
