@@ -10,6 +10,7 @@ extern Pet pet;
 
 PetCardMedalsScreen petCardMedalsScreen;
 
+/** Draws a medal badge and its index. */
 void drawMedalBadge(int x, int y, int i) {
   bool got = pet.hasMedal(1 << i);
   gfx->fillRoundRect(x, y, 100, 24, 6, got ? UI_BAR_OK : UI_TRACK);

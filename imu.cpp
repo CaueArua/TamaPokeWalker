@@ -50,12 +50,14 @@ uint32_t imuSoftwarePedometer() {
   return softPed;
 }
 
+/** Adds detected steps to the pending batch and software pedometer total. */
 static void bankSteps(uint16_t count) {
   uint32_t next = (uint32_t)stepBank + count;
   stepBank = next > 60000UL ? 60000 : (uint16_t)next;
   softPed += count;
 }
 
+/** Detects walking steps from acceleration magnitude and cadence. */
 static void detectSoftwareStep(uint32_t nowMs, float mag) {
   if (walkGravity <= 0.01f) {
     walkGravity = mag;
@@ -93,6 +95,7 @@ static void detectSoftwareStep(uint32_t nowMs, float mag) {
   }
 }
 
+/** Writes a register on the detected QMI8658 device. */
 static void writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
   Wire.beginTransmission(addr);
   Wire.write(reg);
@@ -100,6 +103,7 @@ static void writeReg(uint8_t addr, uint8_t reg, uint8_t val) {
   Wire.endTransmission();
 }
 
+/** Reads a register from the detected QMI8658 device. */
 static uint8_t readReg(uint8_t addr, uint8_t reg) {
   Wire.beginTransmission(addr);
   Wire.write(reg);
@@ -108,27 +112,28 @@ static uint8_t readReg(uint8_t addr, uint8_t reg) {
   return Wire.read();
 }
 
+/** Verifies the sensor identity, configures its ranges, and starts sampling. */
 static bool probeAndStart(uint8_t addr) {
   Wire.beginTransmission(addr);
   if (Wire.endTransmission() != 0) return false;
 
-  uint8_t chipId = readReg(addr, 0x00); // WHO_AM_I deve retornar 0x05
+  uint8_t chipId = readReg(addr, 0x00); // WHO_AM_I must return 0x05.
   if (chipId != 0x05) return false;
 
-  // Software reset (0x60 = 0xB0)
+  // Software reset (0x60 = 0xB0).
   writeReg(addr, 0x60, 0xB0);
   delay(15);
 
-  // CTRL1 (0x02): auto-incremento de endereco I2C (0x40)
+  // CTRL1 (0x02): enable I2C register auto-increment (0x40).
   writeReg(addr, 0x02, 0x40);
 
-  // CTRL2 (0x03): Acelerometro em 2G e ODR 62.5 Hz (0x05)
+  // CTRL2 (0x03): set the accelerometer to 2 g and 62.5 Hz ODR (0x05).
   writeReg(addr, 0x03, 0x05);
 
-  // CTRL3 (0x04): Giroscopio em 512 dps e ODR 112.1 Hz (0x54)
+  // CTRL3 (0x04): set the gyroscope to 512 dps and 112.1 Hz ODR (0x54).
   writeReg(addr, 0x04, 0x54);
 
-  // CTRL7 (0x08): Habilita Acelerometro (bit 0) e Giroscopio (bit 1) = 0x03
+  // CTRL7 (0x08): enable the accelerometer (bit 0) and gyroscope (bit 1).
   writeReg(addr, 0x08, 0x03);
 
   delay(40);
@@ -136,10 +141,11 @@ static bool probeAndStart(uint8_t addr) {
   return true;
 }
 
+/** Reads and converts all six acceleration and gyroscope axes. */
 static bool readImuDirect(float &ax, float &ay, float &az, float &gx, float &gy, float &gz) {
   if (foundAddr == 0) return false;
 
-  // Le 12 bytes seguidos a partir do registrador 0x35 (AX_L ate GZ_H)
+  // Read 12 consecutive bytes starting at register 0x35 (AX_L through GZ_H).
   Wire.beginTransmission(foundAddr);
   Wire.write(0x35);
   if (Wire.endTransmission(false) != 0) return false;
@@ -152,12 +158,12 @@ static bool readImuDirect(float &ax, float &ay, float &az, float &gx, float &gy,
   int16_t rawGy = (int16_t)(Wire.read() | (Wire.read() << 8));
   int16_t rawGz = (int16_t)(Wire.read() | (Wire.read() << 8));
 
-  // Escala Acelerometro 2G = 16384 LSB/g
+  // A 2 g accelerometer range uses 16384 LSB/g.
   ax = rawAx / 16384.0f;
   ay = rawAy / 16384.0f;
   az = rawAz / 16384.0f;
 
-  // Escala Giroscopio 512 dps = 64 LSB/dps
+  // A 512 dps gyroscope range uses 64 LSB/dps.
   gx = rawGx / 64.0f;
   gy = rawGy / 64.0f;
   gz = rawGz / 64.0f;

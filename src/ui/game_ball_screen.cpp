@@ -15,18 +15,8 @@ extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern PmdMon pmd;
 extern SdMon mon;
-extern bool gameOpen;
-extern bool gameNewHi;
-extern uint8_t gameScore;
-extern uint8_t gameMisses;
-extern uint32_t gameOverUntil;
-extern float ballX, ballY, ballVX, ballVY, gamePetX;
-extern float hitX, hitY;
-extern uint32_t hitTime, ballLastHitAt;
 
 extern void drawGameScene();
-extern void stepGame();
-extern int ballHitRadius();
 extern int sceneHour();
 extern void flushStampedFrame();
 extern void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette);
@@ -36,7 +26,9 @@ extern void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t,
 GameBallScreen gameBallScreen;
 
 static constexpr int BALL_CX = 233;
+static constexpr int BALL_CY = 233;
 
+/** Converts 8-bit RGB components to an RGB565 display color. */
 static uint16_t ballColor565(uint8_t r, uint8_t g, uint8_t b) {
   return (uint16_t)((((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)));
 }
@@ -44,7 +36,7 @@ static uint16_t ballColor565(uint8_t r, uint8_t g, uint8_t b) {
 void GameBallScreen::handleTap(int16_t x, int16_t y) {
   if (gameOverUntil) return;
   if (y < 72) {
-    gameOpen = false;
+    closeGame();
     sfxPlay(SFX_TAP);
     return;
   }
@@ -77,7 +69,7 @@ void GameBallScreen::render() {
   if (gameOverUntil) {
     drawGameScene();
     if (deadlineReached(millis(), gameOverUntil)) {
-      gameOpen = false;
+      closeGame();
       return;
     }
     char buf[22];
@@ -153,4 +145,74 @@ void GameBallScreen::render() {
 
   drawMap(SPR_ICON_PLAY, 16, (int)ballX - 24, (int)ballY - 24, 3, false);
   flushStampedFrame();
+}
+
+void GameBallScreen::start() {
+  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  resetGame();
+  hitTime = 0;
+  ballLastHitAt = 0;
+  gamePetX = 233;
+  respawnBall();
+  setScreen(&gameBallScreen);
+  sfxPlay(SFX_GAME_START);
+}
+
+void GameBallScreen::respawnBall() {
+  ballX = 112 + random(242);
+  ballY = 82;
+  float sp = 3.35f + gameScore * 0.14f;
+  if (sp > 8.4f) sp = 8.4f;
+  ballVX = random(2) ? sp : -sp;
+  ballVX += ((int)random(9) - 4) * 0.28f;
+  ballVY = 2.05f;
+}
+
+int GameBallScreen::ballHitRadius() const {
+  if (gameScore >= 20) return 38;
+  if (gameScore >= 8) return 44;
+  return 50;
+}
+
+void GameBallScreen::stepGame() {
+  float grav = 1.14f + gameScore * 0.046f;
+  if (gameScore >= 5) grav += 0.14f;
+  if (gameScore >= 12) grav += 0.18f;
+  if (grav > 2.10f) grav = 2.10f;
+  ballVX += sinf((millis() + gameScore * 97) * 0.018f) * 0.11f;
+  if (random(100) < 7) ballVX += ((int)random(7) - 3) * 0.22f;
+  ballVY += grav;
+  ballX += ballVX;
+  ballY += ballVY;
+  // Bounce off the circular wall.
+  float dx = ballX - BALL_CX, dy = ballY - BALL_CY;
+  float d = sqrtf(dx * dx + dy * dy);
+  if (d > 205) {
+    float nx = dx / d, ny = dy / d;
+    float dot = ballVX * nx + ballVY * ny;
+    if (dot > 0) {
+      ballVX = (ballVX - 2 * dot * nx) * 1.05f;
+      ballVY = (ballVY - 2 * dot * ny) * 0.88f;
+      ballVX += ((int)random(9) - 4) * 0.18f;
+      sfxPlay(SFX_BALL_BOUNCE);
+    }
+    ballX = BALL_CX + nx * 205;
+    ballY = BALL_CY + ny * 205;
+  }
+  if (ballY > 384) {  // The ball hit the ground.
+    if (++gameMisses >= 3) {
+      gameNewHi = (gameScore > pet.gameHi);
+      pet.playResult(gameScore);  // Update the high score and increase joy.
+      sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
+      showResult();
+    } else {
+      respawnBall();
+      sfxPlay(SFX_BALL_MISS);
+    }
+  }
+  // The pet follows the ball along the bottom of the screen.
+  float chase = (ballX - gamePetX) * 0.12f;
+  if (chase > 7) chase = 7;
+  if (chase < -7) chase = -7;
+  gamePetX += chase;
 }

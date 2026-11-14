@@ -8,9 +8,7 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool kbOpen;
 extern bool keyboardDirty;
-extern bool cardDirty;
 extern char nameBuf[12];
 extern uint8_t nameLen;
 extern void flushStampedFrame();
@@ -31,7 +29,7 @@ void KeyboardScreen::render() {
   gfx->setTextSize(2);
   gfx->setCursor(SCREEN_CX - strlen(T(S_NAME)) * 6, 56);
   gfx->print(T(S_NAME));
-  // buffer actual
+  // Current text buffer.
   gfx->fillRoundRect(83, 84, 300, 40, 8, UI_WHITE);
   gfx->drawRoundRect(83, 84, 300, 40, 8, UI_INK);
   gfx->setTextSize(3);
@@ -68,13 +66,21 @@ void KeyboardScreen::handleTap(int16_t x, int16_t y) {
     keyboardDirty = true;
   } else if (i == 29) {  // OK
     pet.rename(nameBuf);
-    kbOpen = false;
-    cardDirty = true;
-    setScreen(nullptr);
+    Screen *target = returnScreen;
+    returnScreen = nullptr;
+    setScreen(target);
   } else if (nameLen < sizeof(nameBuf) - 1) {
     nameBuf[nameLen++] = KB_KEYS[i];
     nameBuf[nameLen] = 0;
     keyboardDirty = true;
   }
+}
+
+bool KeyboardScreen::isStaticClean() const {
+  return !keyboardDirty;
+}
+
+void KeyboardScreen::markDirty() {
+  keyboardDirty = true;
 }
 

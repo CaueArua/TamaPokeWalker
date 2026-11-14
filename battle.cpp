@@ -5,15 +5,18 @@ namespace {
 constexpr uint8_t MAX_BATTLE_ROUNDS = 50;
 constexpr uint8_t MAX_TURN_ROUNDS = 20;
 
+/** Calculates the legacy maximum HP value for a combatant. */
 uint16_t hpFor(const BattleStats &stats) {
   if (stats.hp > 0) return stats.hp;
   return (uint16_t)(18 + stats.level * 3 + stats.def / 2);
 }
 
+/** Limits a random luck roll to the supported 0-99 range. */
 uint8_t clampedLuck(uint8_t luck) {
   return luck > 99 ? 99 : luck;
 }
 
+/** Returns the matchup relation: advantage, neutral, resistance, or immunity. */
 int8_t typeRelation(uint8_t attackType, uint8_t defendType) {
   if (attackType == TYPE_NONE || defendType == TYPE_NONE) return 0;
   switch (attackType) {
@@ -107,6 +110,7 @@ int8_t typeRelation(uint8_t attackType, uint8_t defendType) {
   return 0;
 }
 
+/** Combines one or two defender-type relations into a damage percentage. */
 uint8_t effectPctFor(uint8_t attackType, uint8_t defendType1, uint8_t defendType2) {
   uint32_t pct = 100;
   const uint8_t defendTypes[2] = { defendType1, defendType2 };
@@ -120,12 +124,14 @@ uint8_t effectPctFor(uint8_t attackType, uint8_t defendType1, uint8_t defendType
   return pct > 255 ? 255 : (uint8_t)pct;
 }
 
+/** Applies the attacker's type effectiveness to damage, with safe bounds. */
 uint16_t applyTypeMultiplier(uint16_t damage, const BattleStats &attacker, const BattleStats &defender) {
   uint32_t scaled = (uint32_t)damage * effectPctFor(attacker.type1, defender.type1, defender.type2) / 100;
   if (scaled < 1) scaled = 1;
   return scaled > 65535 ? 65535 : (uint16_t)scaled;
 }
 
+/** Calculates type-adjusted damage from stats, level, and the luck roll. */
 uint16_t damageFor(const BattleStats &attacker, const BattleStats &defender, uint8_t luck) {
   uint16_t level = attacker.level > 0 ? attacker.level : 1;
   uint32_t pressure = (uint32_t)attacker.atk * (10 + level / 4);
@@ -138,12 +144,14 @@ uint16_t damageFor(const BattleStats &attacker, const BattleStats &defender, uin
   return applyTypeMultiplier((uint16_t)damage, attacker, defender);
 }
 
+/** Applies damage without reducing HP below zero and updates the total. */
 void applyHit(uint16_t &hpLeft, uint16_t damage, uint16_t &damageTotal) {
   uint16_t dealt = damage > hpLeft ? hpLeft : damage;
   hpLeft -= dealt;
   damageTotal += dealt;
 }
 
+/** Calculates turn-based battle HP while preserving the legacy minimum. */
 uint16_t turnHpFor(const BattleStats &stats) {
   uint16_t level = stats.level > 0 ? stats.level : 1;
   uint32_t scaled = 30 + (uint32_t)level * 5 + stats.def;
@@ -152,6 +160,7 @@ uint16_t turnHpFor(const BattleStats &stats) {
   return scaled > 65535 ? 65535 : (uint16_t)scaled;
 }
 
+/** Calculates turn damage with action modifiers and a per-turn HP cap. */
 uint16_t cappedTurnDamage(const BattleStats &attacker,
                           const BattleStats &defender,
                           uint16_t defenderMaxHp,
@@ -168,26 +177,31 @@ uint16_t cappedTurnDamage(const BattleStats &attacker,
   return damage;
 }
 
+/** Returns whether a battle has ended or reached its maximum round count. */
 bool finished(const BattleRuntime &battle) {
   return battle.playerHp == 0 || battle.enemyHp == 0 || battle.round >= MAX_TURN_ROUNDS;
 }
 
+/** Determines the winner from the remaining HP values. */
 bool winner(const BattleRuntime &battle) {
   if (battle.enemyHp == 0) return true;
   if (battle.playerHp == 0) return false;
   return battle.playerHp >= battle.enemyHp;
 }
 
+/** Returns whether the action performs an attack. */
 bool isAttackAction(BattleAction action) {
   return action == BATTLE_ATTACK || action == BATTLE_ATTACK_QUICK || action == BATTLE_ATTACK_HEAVY;
 }
 
+/** Returns the attack-strength modifier for the selected action. */
 uint8_t attackPowerPct(BattleAction action) {
   if (action == BATTLE_ATTACK_QUICK) return 85;
   if (action == BATTLE_ATTACK_HEAVY) return 125;
   return 100;
 }
 
+/** Calculates the opponent's dodge chance based on speed and attack type. */
 uint8_t enemyDodgeChance(const BattleRuntime &battle, BattleAction action) {
   int chance = battle.enemy.spe > battle.player.spe ? 18 : 10;
   if (action == BATTLE_ATTACK_QUICK) chance -= 9;
@@ -217,6 +231,7 @@ uint8_t wildLevelFor(uint8_t petLevel, uint8_t luckRoll) {
   return level > 100 ? 100 : (uint8_t)level;
 }
 
+/** Checks whether a species type matches the encounter's day phase. */
 static bool wildTypePreferred(uint8_t type1, uint8_t type2, uint8_t phase) {
   auto has = [&](uint8_t t) { return type1 == t || type2 == t; };
   switch (phase) {

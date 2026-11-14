@@ -4,42 +4,29 @@
 #include <string.h>
 #include "../../audio.h"
 #include "../../battle.h"
+#include "../../dayphase.h"
 #include "../../dex.h"
 #include "../../i18n.h"
 #include "../../pet.h"
 #include "../../sdmon.h"
 #include "../../species.h"
+#include "../../species_chirp.h"
 #include "dex_screen.h"
+#include "main_screen.h"
 #include "party_screen.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern BattleStats battlePlayer;
-extern BattleRuntime battleRun;
-extern BattleTurnResult battleTurn;
-extern BattleReward battleReward;
-extern bool battleResolved;
-extern bool battleDirty;
-extern int16_t battleDex;
-extern uint8_t battleLevel;
-extern bool battleShiny;
-extern bool battleCatchOffered;
-extern bool battleCatchTried;
-extern bool battleCatchDone;
-extern bool battleCatchSuccess;
-extern bool battleRespectCatch;
-extern uint8_t battleCatchChance;
-extern uint32_t battleAttackMenuUntil;
-extern char battleMsg[28];
 extern PmdMon pmd;
-extern PmdMon wildPmd;
+extern uint32_t wildPromptUntil;
+extern uint8_t currentDayPhase();
+extern void markUiDirty();
+extern void lockTouchBrief(uint16_t ms = 160);
 
 extern const char *dexName(int16_t dex);
 extern int sceneHour();
 extern void drawGameScene();
 extern void flushStampedFrame();
-extern void closeBattle();
-extern void performBattleAction(BattleAction action);
 extern int drawTypeChips(int x, int y, const DexEntry &d, bool alignRight);
 extern void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);
 extern void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t,
@@ -47,6 +34,7 @@ extern void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t,
 extern void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY,
                         uint32_t t, bool loop, bool sil, uint8_t maxS);
 extern void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette);
+extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
 
 BattleScreen battleScreen;
 static constexpr int BATTLE_CX = 233;
@@ -55,6 +43,7 @@ bool BattleScreen::isStaticClean() const {
   return battleResolved && !battleDirty;
 }
 
+/** Draws a bounded proportional HP bar. */
 static void drawBattleHpBar(int x, int y, uint16_t cur, uint16_t maxHp, uint16_t color) {
   if (maxHp == 0) maxHp = 1;
   int w = 150;
@@ -64,7 +53,7 @@ static void drawBattleHpBar(int x, int y, uint16_t cur, uint16_t maxHp, uint16_t
   if (fw > 2) gfx->fillRoundRect(x, y, fw, 14, 4, color);
 }
 
-static void battleRewardText(char *buf, size_t len) {
+void BattleScreen::battleRewardText(char *buf, size_t len) const {
   if (battleReward.amount == 0) { buf[0] = 0; return; }
   StrId fmt = S_SPD_GAIN_FMT;
   if (battleReward.stat == BATTLE_REWARD_ATK) fmt = S_ATK_GAIN_FMT;
@@ -72,6 +61,7 @@ static void battleRewardText(char *buf, size_t len) {
   snprintf(buf, len, T(fmt), battleReward.amount);
 }
 
+/** Centers a battle button label and reduces its text size when needed. */
 static void drawBattleButtonLabel(int x, int y, int w, const char *label) {
   int px = (int)strlen(label) * 12;
   if (px <= w - 8) {
@@ -103,9 +93,9 @@ void BattleScreen::handleTap(int16_t x, int16_t y) {
           battleCatchChance = pet.catchChanceForWild(battleDex, battleLevel, battlePlayer.level, closeWin);
         }
         if (battleCatchSuccess) {
-          if (!pet.isPartyFull()) {
-            pet.registerCaught(battleDex, battleShiny, battleLevel);
-          } else {
+          bool partyWasFull = pet.isPartyFull();
+          pet.registerCaught(battleDex, battleShiny, battleLevel);
+          if (partyWasFull) {
             partyReplaceScreen.setCandidate(battleDex, battleLevel, battleShiny);
             setScreen(&partyReplaceScreen);
           }
@@ -157,6 +147,7 @@ void BattleScreen::handleTap(int16_t x, int16_t y) {
   }
 }
 
+/** Draws the marker shown for an already-caught battle species. */
 static void drawCaughtBattleMarker(int x, int y) {
   drawMap(SPR_ICON_PLAY, 16, x, y, 2, false);
 }
@@ -310,3 +301,258 @@ void BattleScreen::render() {
 
   flushStampedFrame();
 }
+
+BattleStats BattleScreen::petBattleStats() const {
+  BattleStats stats = {};
+  stats.level = pet.level();
+  stats.atk = pet.atkStat();
+  stats.def = pet.defStat();
+  stats.spe = pet.speStat();
+  stats.hp = 0;
+  if (!pet.isEgg() && pet.speciesId >= 1 && pet.speciesId <= DEX_COUNT) {
+    stats.type1 = DEX_TBL[pet.speciesId].type1;
+    stats.type2 = DEX_TBL[pet.speciesId].type2;
+  }
+  return stats;
+}
+
+
+
+void BattleScreen::closeBattle() {
+  battleResolved = false;
+  battleAttackMenuUntil = 0;
+  battleCatchOffered = false;
+  battleCatchTried = false;
+  battleCatchDone = false;
+  battleCatchSuccess = false;
+  battleRespectCatch = false;
+  battleCatchChance = 0;
+  wildPmd.unload();
+  if (activeScreen == &battleScreen) {
+    Screen *target = returnScreen;
+    returnScreen = nullptr;
+    setScreen(target);
+  }
+  else { markUiDirty(); lockTouchBrief(); }
+}
+
+
+
+void BattleScreen::start(int16_t forcedDex, uint8_t forcedLevel, int8_t forcedShiny) {
+  if (!canStartWildBattle(pet.isEgg(), pet.sleeping, pet.ceremony)) return;
+  returnScreen = activeScreen;
+  wildPromptUntil = 0;
+  mainScreen.scheduleNextWild(millis());
+  if (forcedDex >= 1 && forcedDex <= DEX_COUNT) {
+    battleDex = forcedDex;
+    battleLevel = forcedLevel ? forcedLevel : wildLevelFor(pet.level(), (uint8_t)random(100));
+  } else {
+    uint8_t speciesRoll = random(100);
+    uint8_t levelRoll = random(100);
+    battleDex = pickWildSpecies(speciesRoll, currentDayPhase());
+    battleLevel = wildLevelFor(pet.level(), levelRoll);
+  }
+  battleShiny = forcedShiny < 0 ? (random(4096) < pet.stepShinyChancePer4096()) : forcedShiny != 0;
+  battlePlayer = petBattleStats();
+  battleEnemy = wildBattleStats(battleDex, battleLevel);
+  battleEnemy.hp = 0;
+  battleResult = {};
+  battleRun = beginBattleRuntime(battlePlayer, battleEnemy);
+  battleTurn = {};
+  battleReward = {};
+  battleMsg[0] = 0;
+  battleAttackMenuUntil = 0;
+  battleLowHpWarned = false;
+  battleCatchOffered = false;
+  battleCatchTried = false;
+  battleCatchDone = false;
+  battleCatchSuccess = false;
+  battleRespectCatch = false;
+  battleCatchChance = 0;
+  battleResolved = false;
+  battleDirty = true;
+  wildPmd.unload();
+  wildPmd.load(battleDex, battleShiny);
+  setScreen(&battleScreen);
+  sfxPlay(SFX_TAP);
+  speciesChirpPlay(battleDex);
+}
+
+
+
+void BattleScreen::finishBattle() {
+  if (battleResolved) return;
+  battleResolved = true;
+  battleDirty = true;
+  if (battleTurn.playerWon) {
+    bool closeWin = battleRun.playerHp <= battleRun.playerMaxHp / 3;
+    battleReward = pet.applyBattleWin(battleDex, closeWin);
+    battleCatchOffered = true;
+    battleRespectCatch = false;
+    battleCatchChance = pet.catchChanceForWild(battleDex, battleLevel, battlePlayer.level, closeWin);
+    sfxPlay(SFX_BATTLE_WIN);
+  } else {
+    battleReward = {};
+    pet.applyBattleLoss();
+    bool closeLoss = battleRun.enemyHp > 0 && battleRun.enemyHp * 100UL <= battleRun.enemyMaxHp * 30UL;
+    battleCatchChance = closeLoss ? pet.respectCatchChanceForWild(battleDex, battleLevel, battlePlayer.level) : 0;
+    battleCatchOffered = battleCatchChance > 0;
+    battleRespectCatch = battleCatchOffered;
+    sfxPlay(SFX_BATTLE_LOSS);
+  }
+}
+
+
+
+void BattleScreen::performBattleAction(BattleAction action) {
+  if (battleResolved) return;
+  battleAttackMenuUntil = 0;
+  battleLastAction = action;
+  battleTurn = stepBattle(battleRun, action, (uint8_t)random(100));
+  if (battleTurn.restFailed) {
+    snprintf(battleMsg, sizeof(battleMsg), T(S_NO_REST));
+  } else if (battleTurn.counterReady) {
+    snprintf(battleMsg, sizeof(battleMsg), T(S_COUNTER_READY));
+  } else if (battleTurn.playerRested) {
+    char healMsg[18];
+    snprintf(healMsg, sizeof(healMsg), T(S_RESTED_FMT), battleTurn.playerHeal);
+    snprintf(battleMsg, sizeof(battleMsg), "%s %s", healMsg, T(S_GUARD));
+  } else if (battleTurn.playerDamage > 0) {
+    if (battleTurn.playerTypePct > 100) snprintf(battleMsg, sizeof(battleMsg), "%s %u", T(S_EFFECTIVE), battleTurn.playerDamage);
+    else if (battleTurn.playerTypePct < 100) snprintf(battleMsg, sizeof(battleMsg), "%s %u", T(S_NOT_EFFECTIVE), battleTurn.playerDamage);
+    else snprintf(battleMsg, sizeof(battleMsg), T(S_HIT_FMT), battleTurn.playerDamage);
+  } else if (battleTurn.enemyDodged) {
+    snprintf(battleMsg, sizeof(battleMsg), T(S_ENEMY_DODGED));
+  } else if (battleTurn.playerDodged) {
+    snprintf(battleMsg, sizeof(battleMsg), T(S_DODGED));
+  } else {
+    snprintf(battleMsg, sizeof(battleMsg), T(S_MISSED));
+  }
+  if (battleTurn.battleEnded) {
+    finishBattle();
+    return;
+  }
+  if (!battleLowHpWarned && battleRun.playerHp > 0 && battleRun.playerHp <= battleRun.playerMaxHp * 3 / 10) {
+    battleLowHpWarned = true;
+    sfxPlay(SFX_LOW_HP);
+  }
+  if (battleTurn.restFailed) sfxPlay(SFX_DENY);
+  else if (battleTurn.counterReady) sfxPlay(SFX_COUNTER);
+  else if (battleTurn.playerRested) sfxPlay(SFX_REST);
+  else if (action == BATTLE_ATTACK_QUICK) sfxPlay(SFX_ATTACK_QUICK);
+  else if (action == BATTLE_ATTACK_HEAVY) sfxPlay(SFX_ATTACK_HEAVY);
+  else if (battleTurn.playerDamage > 0 && battleTurn.playerTypePct > 100) sfxPlay(SFX_EFFECTIVE);
+  else if (battleTurn.playerDamage > 0 && battleTurn.playerTypePct < 100) sfxPlay(SFX_WEAK_HIT);
+  else if (battleTurn.enemyDamage > 0) sfxPlay(SFX_ENEMY_HIT);
+  else sfxPlay(battleTurn.playerDamage > 0 ? SFX_PLAY : SFX_TAP);
+}
+
+/** Returns the localized name for a battle type. */
+const char *battleTypeName(uint8_t type) {
+  static const char *const TYPE_NAMES[LANG_COUNT][19] = {
+    { "", "NORMAL", "FUEGO", "AGUA", "ELEC", "PLANTA", "HIELO", "LUCHA", "VENENO", "TIERRA", "VUELO", "PSI", "BICHO", "ROCA", "FANT", "DRAGON", "SINIE", "ACERO", "HADA" },
+    { "", "NORMAL", "FIRE", "WATER", "ELEC", "GRASS", "ICE", "FIGHT", "POISON", "GROUND", "FLY", "PSY", "BUG", "ROCK", "GHOST", "DRAGON", "DARK", "STEEL", "FAIRY" },
+    { "", "NORMAL", "FEU", "EAU", "ELEC", "PLANTE", "GLACE", "COMBAT", "POISON", "SOL", "VOL", "PSY", "INSECT", "ROCHE", "SPECTRE", "DRAGON", "TENEBR", "ACIER", "FEE" },
+    { "", "NORMAL", "FEUER", "WASSER", "ELEKTRO", "PFLANZE", "EIS", "KAMPF", "GIFT", "BODEN", "FLUG", "PSYCHO", "KAEFER", "GESTEIN", "GEIST", "DRACHE", "UNLICHT", "STAHL", "FEE" },
+    { "", "NORMALE", "FUOCO", "ACQUA", "ELETTRO", "ERBA", "GHIACCIO", "LOTTA", "VELENO", "TERRA", "VOLANTE", "PSICO", "COLEOT", "ROCCIA", "SPETTRO", "DRAGO", "BUIO", "ACCIAIO", "FOLLETTO" },
+    { "", "NORMAL", "FOGO", "AGUA", "ELETR", "PLANTA", "GELO", "LUTA", "VENENO", "TERRA", "VOO", "PSI", "INSETO", "PEDRA", "FANT", "DRAGAO", "SOMBRIO", "ACO", "FADA" },
+  };
+  if (type < 19) return TYPE_NAMES[gLang][type];
+  switch (type) {
+    case TYPE_NORMAL: return "NORMAL";
+    case TYPE_FIRE: return "FIRE";
+    case TYPE_WATER: return "WATER";
+    case TYPE_ELECTRIC: return "ELEC";
+    case TYPE_GRASS: return "GRASS";
+    case TYPE_ICE: return "ICE";
+    case TYPE_FIGHTING: return "FIGHT";
+    case TYPE_POISON: return "POISON";
+    case TYPE_GROUND: return "GROUND";
+    case TYPE_FLYING: return "FLY";
+    case TYPE_PSYCHIC: return "PSY";
+    case TYPE_BUG: return "BUG";
+    case TYPE_ROCK: return "ROCK";
+    case TYPE_GHOST: return "GHOST";
+    case TYPE_DRAGON: return "DRAGON";
+    case TYPE_DARK: return "DARK";
+    case TYPE_STEEL: return "STEEL";
+    case TYPE_FAIRY: return "FAIRY";
+  }
+  return "";
+}
+
+
+
+/** Returns the UI color assigned to a battle type. */
+uint16_t battleTypeColor(uint8_t type) {
+  switch (type) {
+    case TYPE_FIRE: return 0xEA87;
+    case TYPE_WATER: return 0x4C98;
+    case TYPE_ELECTRIC: return 0xBCA1;
+    case TYPE_GRASS: return 0x3C49;
+    case TYPE_ICE: return 0x5D99;
+    case TYPE_FIGHTING: return 0xA2A5;
+    case TYPE_POISON: return 0x8A73;
+    case TYPE_GROUND: return 0xB447;
+    case TYPE_FLYING: return 0x8D7F;
+    case TYPE_PSYCHIC: return 0xD28F;
+    case TYPE_BUG: return 0x7CC4;
+    case TYPE_ROCK: return 0x9407;
+    case TYPE_GHOST: return 0x6B33;
+    case TYPE_DRAGON: return 0x5A5F;
+    case TYPE_DARK: return 0x5ACB;
+    case TYPE_STEEL: return 0xA534;
+    case TYPE_FAIRY: return 0xF3B7;
+    default: return 0x8C4D;
+  }
+}
+
+
+
+/** Formats one or two species types into a bounded text buffer. */
+void typeText(char *buf, size_t len, const DexEntry &d) {
+  if (d.type2 == TYPE_NONE) snprintf(buf, len, "%s", battleTypeName(d.type1));
+  else snprintf(buf, len, "%s %s", battleTypeName(d.type1), battleTypeName(d.type2));
+}
+
+
+
+/** Calculates the pixel width needed to draw a type chip. */
+int typeChipWidth(uint8_t type) {
+  return (int)strlen(battleTypeName(type)) * 6 + 14;
+}
+
+
+
+/** Draws a single colored type chip. */
+void drawTypeChip(int x, int y, uint8_t type) {
+  if (type == TYPE_NONE) return;
+  const char *label = battleTypeName(type);
+  int w = typeChipWidth(type);
+  gfx->fillRoundRect(x, y, w, 16, 5, lerp565(battleTypeColor(type), UI_WHITE, 5, 8));
+  gfx->drawRoundRect(x, y, w, 16, 5, UI_INK);
+  gfx->setTextSize(1);
+  gfx->setTextColor(UI_INK);
+  gfx->setCursor(x + 7, y + 5);
+  gfx->print(label);
+}
+
+
+
+/** Draws a species' type chips and returns their leftmost coordinate. */
+int drawTypeChips(int x, int y, const DexEntry &d, bool alignRight) {
+  int w1 = typeChipWidth(d.type1);
+  int w2 = d.type2 == TYPE_NONE ? 0 : typeChipWidth(d.type2);
+  int total = w1 + (w2 ? 4 + w2 : 0);
+  int sx = alignRight ? x - total : x;
+  drawTypeChip(sx, y, d.type1);
+  if (d.type2 != TYPE_NONE) drawTypeChip(sx + w1 + 4, y, d.type2);
+  gfx->setTextSize(2);
+  return sx;
+}
+
+
+
+
+
+

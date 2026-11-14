@@ -11,22 +11,8 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool gameOpen;
-extern uint8_t gameScore;
-extern uint8_t memoSeq[14];
-extern uint8_t memoLen, memoShow, memoInput, memoRounds;
-extern uint32_t memoNextAt;
-extern bool memoShowing;
-extern int8_t memoActivePad, memoFlashPad, memoHintPad;
-extern bool memoFlashGood;
-extern uint32_t memoFlashUntil, memoFailUntil, memoTurnUntil;
-extern uint32_t gameOverUntil;
 
 extern void drawGameScene();
-extern void stepMemoGame();
-extern void memoPadSound(uint8_t pad);
-extern void startMemoRound();
-extern void finishMemoGame();
 extern void flushStampedFrame();
 extern int sceneHour();
 extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
@@ -35,6 +21,7 @@ GameMemoScreen gameMemoScreen;
 
 static constexpr int MEMO_CX = 233;
 
+/** Returns the index of the memory pad at the supplied point, or -1. */
 static int memoPadAt(int16_t x, int16_t y) {
   const int16_t px[4] = { 142, 324, 142, 324 };
   const int16_t py[4] = { 164, 164, 318, 318 };
@@ -47,7 +34,7 @@ static int memoPadAt(int16_t x, int16_t y) {
 
 void GameMemoScreen::handleTap(int16_t x, int16_t y) {
   if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
+  if (y < 72) { closeGame(); sfxPlay(SFX_TAP); return; }
   if (memoShowing || memoFailUntil || deadlineActive(millis(), memoTurnUntil)) return;
   int pad = memoPadAt(x, y);
   if (pad < 0) return;
@@ -63,21 +50,21 @@ void GameMemoScreen::handleTap(int16_t x, int16_t y) {
   memoFlashPad = pad;
   memoFlashGood = true;
   memoFlashUntil = millis() + 180;
-  memoPadSound((uint8_t)pad);
+  padSound((uint8_t)pad);
   memoInput++;
   if (memoInput >= memoLen) {
     memoRounds++;
-    if (memoLen >= 14) finishMemoGame();
-    else startMemoRound();
+    if (memoLen >= 14) finishGame();
+    else startRound();
   }
 }
 
 void GameMemoScreen::render() {
   if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.memoHi, S_DEF_GAIN_FMT);
+    renderResult(T(S_RECORD_FMT), pet.memoHi, S_DEF_GAIN_FMT);
     return;
   }
-  stepMemoGame();
+  stepGame();
   drawGameScene();
   bool night = sceneHour() < 6 || sceneHour() >= 20;
   uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
@@ -121,4 +108,68 @@ void GameMemoScreen::render() {
   gfx->setCursor(MEMO_CX - (int)strlen(phase) * 6, 234);
   gfx->print(phase);
   flushStampedFrame();
+}
+
+void GameMemoScreen::startRound() {
+  if (memoLen < 14) memoSeq[memoLen++] = random(4);
+  memoShow = 0;
+  memoInput = 0;
+  memoActivePad = -1;
+  memoHintPad = -1;
+  memoShowing = true;
+  memoNextAt = millis() + 350;
+  memoTurnUntil = 0;
+}
+
+void GameMemoScreen::start() {
+  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  resetGame();
+  memoLen = 0;
+  memoRounds = 0;
+  memoFlashPad = -1;
+  memoHintPad = -1;
+  memoFlashUntil = memoFailUntil = memoTurnUntil = 0;
+  startRound();
+  setScreen(&gameMemoScreen);
+  sfxPlay(SFX_GAME_START);
+}
+
+void GameMemoScreen::finishGame() {
+  gameScore = memoRounds;
+  gameNewHi = (memoRounds > pet.memoHi);
+  gameGain = pet.applyMemoResult(memoRounds);
+  sfxPlay(gameNewHi && memoRounds > 0 ? SFX_MEDAL : SFX_LEVEL);
+  showResult();
+}
+
+void GameMemoScreen::padSound(uint8_t pad) {
+  if (pad < 4) sfxPlay((uint8_t)(SFX_MEMO_PAD_0 + pad));
+}
+
+void GameMemoScreen::stepGame() {
+  uint32_t now = millis();
+  if (memoFailUntil) {
+    if (deadlineReached(now, memoFailUntil)) {
+      memoFailUntil = 0;
+      memoHintPad = -1;
+      finishGame();
+    }
+    return;
+  }
+  if (!memoShowing || deadlineActive(now, memoNextAt)) return;
+  if (memoActivePad >= 0) {
+    memoActivePad = -1;
+    memoShow++;
+    if (memoShow >= memoLen) {
+      memoShowing = false;
+      memoInput = 0;
+      memoTurnUntil = now + 520;
+    } else {
+      memoNextAt = now + 150;
+    }
+    return;
+  }
+  memoActivePad = memoSeq[memoShow];
+  padSound((uint8_t)memoActivePad);
+  memoNextAt = now + 480;
 }

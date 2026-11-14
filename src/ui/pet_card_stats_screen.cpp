@@ -4,14 +4,13 @@
 #include "../../species.h"
 #include "../../pet.h"
 #include "../../i18n.h"
+#include "battle_screen.h"
 #include "strength_screen.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool cardOpen;
 extern void markUiDirty();
 extern void lockTouchBrief(uint16_t ms = 160);
-extern void startBattle();
 extern StrengthTrainingScreen strengthTrainingScreen;
 
 PetCardStatsScreen petCardStatsScreen;
@@ -54,15 +53,13 @@ void PetCardStatsScreen::renderPage() {
 }
 
 void PetCardStatsScreen::handlePageTap(int16_t x, int16_t y) {
-  if (y >= 286 && y <= 336 && x >= 82 && x <= 384) {
-    cardOpen = false;
+  if (y >= 294 && y < 330 && x >= 82 && x <= 384) {
     markUiDirty();
     lockTouchBrief();
-    startBattle();
-  } else if (y >= 330 && y <= 388 && x >= 82 && x <= 384) {
-    cardOpen = false;
+    battleScreen.start();
+  } else if (y >= 338 && y < 374 && x >= 82 && x <= 384) {
     markUiDirty();
     lockTouchBrief();
-    strengthTrainingScreen.open();
+    strengthTrainingScreen.open(this);
   }
 }

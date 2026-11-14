@@ -10,10 +10,8 @@
 
 extern Arduino_Canvas *gfx;
 extern uint8_t helpPage;
-extern bool helpOpen;
-extern bool clockOpen;
 extern bool helpDirty;
-extern bool clockDirty;
+extern void openClock(Screen *returnTo);
 extern void flushStampedFrame();
 
 HelpScreen helpScreen;
@@ -163,11 +161,7 @@ void HelpScreen::handleTap(int16_t x, int16_t y) {
       return;
     }
     if (x >= 154 && x <= 312) {
-      helpOpen = false;
-      clockOpen = true;
-      clockDirty = true;
-      setScreen(&clockSettingsScreen);
-      sfxPlay(SFX_TAP);
+      openClock(this);
       return;
     }
   }
@@ -185,10 +179,19 @@ void HelpScreen::handleSwipe(int dir) {
   sfxPlay(SFX_MENU);
 }
 
-void HelpScreen::handleSwipeV(int) {
-  helpOpen = false;
-  clockOpen = true;
-  clockDirty = true;
-  setScreen(&clockSettingsScreen);
-  sfxPlay(SFX_TAP);
+void HelpScreen::handleSwipeV(int dir) {
+  if (dir > 0) {
+    openClock(this);
+  } else {
+    setScreen(nullptr);
+    sfxPlay(SFX_TAP);
+  }
+}
+
+bool HelpScreen::isStaticClean() const {
+  return !helpDirty;
+}
+
+void HelpScreen::markDirty() {
+  helpDirty = true;
 }

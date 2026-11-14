@@ -11,19 +11,8 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool gameOpen;
-extern uint8_t gameScore;
-extern uint8_t gameMisses;
-extern uint8_t cleanActive;
-extern int16_t cleanX[4], cleanY[4];
-extern bool cleanAlive[4];
-extern uint32_t cleanUntil, cleanSpawnAt, gameOverUntil;
-extern float hitX, hitY;
-extern uint32_t hitTime;
 
 extern void drawGameScene();
-extern void spawnCleanSpot();
-extern void finishCleanGame();
 extern void flushStampedFrame();
 extern int sceneHour();
 
@@ -31,13 +20,14 @@ GameCleanScreen gameCleanScreen;
 
 static constexpr int CLEAN_CX = 233;
 
+/** Converts 8-bit RGB components to an RGB565 display color. */
 static uint16_t cleanColor565(uint8_t r, uint8_t g, uint8_t b) {
   return (uint16_t)((((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)));
 }
 
 void GameCleanScreen::handleTap(int16_t x, int16_t y) {
   if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
+  if (y < 72) { closeGame(); sfxPlay(SFX_TAP); return; }
   for (uint8_t i = 0; i < 4; i++) {
     if (!cleanAlive[i]) continue;
     int dx = x - cleanX[i], dy = y - cleanY[i];
@@ -52,22 +42,22 @@ void GameCleanScreen::handleTap(int16_t x, int16_t y) {
       return;
     }
   }
-  if (++gameMisses >= 3) finishCleanGame();
+  if (++gameMisses >= 3) finishGame();
   else sfxPlay(SFX_MINIGAME_BAD);
 }
 
 void GameCleanScreen::render() {
   uint32_t now = millis();
   if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.cleanHi, S_HYG_GAIN_FMT);
+    renderResult(T(S_RECORD_FMT), pet.cleanHi, S_HYG_GAIN_FMT);
     return;
   }
   if (deadlineReached(now, cleanUntil) || gameMisses >= 3) {
-    finishCleanGame();
+    finishGame();
     return;
   }
   if (deadlineReached(now, cleanSpawnAt)) {
-    if (cleanActive < 4) spawnCleanSpot();
+    if (cleanActive < 4) spawnSpot();
     cleanSpawnAt = now + 720 - (gameScore > 12 ? 260 : gameScore * 20);
   }
   drawGameScene();
@@ -104,4 +94,34 @@ void GameCleanScreen::render() {
   uint32_t ht = millis() - hitTime;
   if (hitTime && ht < 220) gfx->drawCircle((int)hitX, (int)hitY, 42 + ht / 8, UI_BAR_OK);
   flushStampedFrame();
+}
+
+void GameCleanScreen::spawnSpot() {
+  for (uint8_t i = 0; i < 4; i++) {
+    if (cleanAlive[i]) continue;
+    cleanX[i] = 88 + random(290);
+    cleanY[i] = 122 + random(224);
+    cleanAlive[i] = true;
+    cleanActive++;
+    return;
+  }
+}
+
+void GameCleanScreen::start() {
+  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  resetGame();
+  cleanActive = 0;
+  for (uint8_t i = 0; i < 4; i++) cleanAlive[i] = false;
+  cleanUntil = millis() + 18000;
+  cleanSpawnAt = millis();
+  spawnSpot();
+  setScreen(&gameCleanScreen);
+  sfxPlay(SFX_GAME_START);
+}
+
+void GameCleanScreen::finishGame() {
+  gameNewHi = (gameScore > pet.cleanHi);
+  gameGain = pet.applyCleanResult(gameScore);
+  sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
+  showResult();
 }

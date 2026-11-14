@@ -17,7 +17,7 @@ bool PmdMon::load(uint16_t dexNum, bool shiny) {
   uint16_t fileId = (dexNum > 0 && dexNum <= DEX_COUNT) ? DEX_TBL[dexNum].natNum : dexNum;
   snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", fileId);
   File f = FFat.open(path, FILE_READ);
-  if (!f && shiny) {  // sin shiny PMD: usa el normal
+  if (!f && shiny) {  // Fall back to the normal PMD sprite if shiny is unavailable.
     snprintf(path, sizeof(path), "/mons/p%03u.bin", fileId);
     f = FFat.open(path, FILE_READ);
   }
@@ -44,7 +44,7 @@ bool PmdMon::load(uint16_t dexNum, bool shiny) {
     uint8_t id = p[0], w = p[1], h = p[2], nf = p[3];
     p += 4;
     if (id >= PMD_NACTS || nf > 24) { unload(); return false; }
-    // valida que ms[] y los datos del frame caben en el blob (archivo truncado)
+    // Validate that frame durations and pixel data fit in the blob.
     uint32_t bytes = (uint32_t)nf * 2 + (uint32_t)w * h * nf;
     if (w == 0 || h == 0 || nf == 0 || p + bytes > end) { unload(); return false; }
     PmdAct &a = acts[id];
@@ -57,7 +57,7 @@ bool PmdMon::load(uint16_t dexNum, bool shiny) {
     }
     a.data = p;
     p += (uint32_t)w * h * nf;
-    // fila mas baja con contenido en cualquier frame: anclar por los pies
+    // Find the lowest occupied row across frames to anchor the sprite by its feet.
     uint8_t base = 1;
     for (uint8_t f = 0; f < nf; f++) {
       const uint8_t *fr = a.data + (uint32_t)f * w * h;
@@ -151,7 +151,7 @@ bool SdMon::load(uint16_t dexNum, bool shiny) {
   char path[24];
   snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", dexNum);
   File f = FFat.open(path, FILE_READ);
-  if (!f && shiny) {  // sin variante shiny: usa la normal
+  if (!f && shiny) {  // Fall back to the normal sprite if shiny is unavailable.
     snprintf(path, sizeof(path), "/mons/%03u.bin", dexNum);
     f = FFat.open(path, FILE_READ);
   }
@@ -171,7 +171,7 @@ bool SdMon::load(uint16_t dexNum, bool shiny) {
   h = header[1];
   frames = header[2];
   frameMs = header[3];
-  // acota dimensiones: evita size desbordado o absurdo con archivo corrupto
+  // Bound dimensions to avoid oversized allocations from corrupt files.
   if (f.read((uint8_t *)&palCount, 2) != 2 || palCount > 256 ||
       w == 0 || w > 256 || h == 0 || h > 256 || frames == 0 || frames > 64) {
     f.close();
@@ -197,7 +197,7 @@ bool SdMon::load(uint16_t dexNum, bool shiny) {
     return false;
   }
 
-  // zoom entero para que el bicho mida ~200 px de alto en pantalla
+  // Choose an integer zoom that makes the sprite about 200 pixels tall.
   scale = 200 / h;
   if (scale < 2) scale = 2;
   if (scale > 5) scale = 5;
@@ -217,10 +217,10 @@ void SdMon::unload() {
 }
 
 // ---------------------------------------------------------------------------
-// Protocolo de carga por USB (para llenar la FFat sin sacar nada de la placa):
-//   PUT <ruta> <bytes>\n  + datos crudos   -> "OK" ... "DONE"
-//   LS\n                                   -> listado de /mons
-// Usar con tools/send_sd.py
+// USB upload protocol for writing files to FFat without removing the card:
+//   PUT <path> <bytes>\n  + raw data   -> "OK" ... "DONE"
+//   LS\n                                  -> list /mons
+// Used by tools/send_sd.py.
 // ---------------------------------------------------------------------------
 
 bool sdSerialCommand(const String &line) {
@@ -249,7 +249,7 @@ bool sdSerialCommand(const String &line) {
       if (n == 0) break;  // timeout
       f.write(buf, n);
       remaining -= n;
-      Serial.println("#");  // ack: listo para el siguiente bloque
+      Serial.println("#");  // Acknowledge readiness for the next chunk.
     }
     f.close();
     Serial.setTimeout(1000);

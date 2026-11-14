@@ -8,7 +8,6 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool cardOpen;
 extern bool cardDirty;
 extern bool expeditionTrainChoiceOpen;
 extern uint32_t expeditionNowEpoch();
@@ -21,6 +20,7 @@ extern void lockTouchBrief(uint16_t ms = 160);
 
 PetCardExpeditionScreen petCardExpeditionScreen;
 
+/** Draws an expedition inventory item and its current quantity. */
 static void drawExpeditionItem(int x, int y, ExpeditionItem item) {
   const int w = 172, h = 54;
   uint8_t count = pet.itemCounts[item];
@@ -44,6 +44,7 @@ static void drawExpeditionItem(int x, int y, ExpeditionItem item) {
   gfx->print(amount);
 }
 
+/** Draws the stat-selection dialog for using an expedition training item. */
 static void renderExpeditionTrainChoice() {
   gfx->fillRoundRect(58, 118, 350, 190, 14, UI_WHITE);
   gfx->drawRoundRect(58, 118, 350, 190, 14, UI_INK);
@@ -186,6 +187,7 @@ void PetCardExpeditionScreen::renderPage() {
   if (expeditionTrainChoiceOpen) renderExpeditionTrainChoice();
 }
 
+/** Returns the expedition item represented by a point, or -1 if none. */
 static int8_t expeditionItemAt(int16_t x, int16_t y) {
   if ((y < 200 || y > 254) && (y < 264 || y > 318)) return -1;
   bool left = x >= 50 && x <= 222;
@@ -197,9 +199,18 @@ static int8_t expeditionItemAt(int16_t x, int16_t y) {
 
 void PetCardExpeditionScreen::handlePageTap(int16_t x, int16_t y) {
   if (expeditionTrainChoiceOpen) {
-    if (y >= 172 && y <= 238 && x >= 74 && x <= 398) {
-      int8_t stat = (x - 74) / 108;
-      if (stat > TRAIN_STAT_SPE || !pet.useExpeditionItem(EXP_ITEM_TRAIN, stat)) sfxPlay(SFX_DENY);
+    int8_t stat = -1;
+    if (y >= 172 && y < 238) {
+      for (int8_t i = 0; i < 3; i++) {
+        int left = 74 + i * 108;
+        if (x >= left && x < left + 102) {
+          stat = i;
+          break;
+        }
+      }
+    }
+    if (stat >= 0) {
+      if (!pet.useExpeditionItem(EXP_ITEM_TRAIN, (uint8_t)stat)) sfxPlay(SFX_DENY);
       else sfxPlay(SFX_ITEM_USE);
       expeditionTrainChoiceOpen = false;
       cardDirty = true;
@@ -212,8 +223,7 @@ void PetCardExpeditionScreen::handlePageTap(int16_t x, int16_t y) {
     return;
   }
   if (y >= 396) {
-    cardOpen = false;
-    markUiDirty();
+    setScreen(nullptr);
     lockTouchBrief();
     sfxPlay(SFX_TAP);
     return;

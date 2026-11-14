@@ -6,9 +6,11 @@ class PetCardExpeditionScreen : public PetCardPageScreen {
   ExpeditionSite siteChoice = EXP_SITE_COAST;
 
 public:
+  /** Draws expedition status, rewards, and available sites. */
   void renderPage() override;
 
 protected:
+  /** Handles expedition start, claim, and item-use controls. */
   void handlePageTap(int16_t x, int16_t y) override;
 };
 

@@ -2,14 +2,23 @@
 
 #include <Arduino.h>
 
-// QMI8658 auf dem Waveshare I2C-Bus. Ohne Interrupt-Pin: nur pollen.
+/** Initializes the QMI8658 on the shared I2C bus. */
 bool imuBegin();
+/** Returns whether the IMU was detected and initialized. */
 bool imuOk();
+/** Polls the sensor when the requested interval has elapsed. */
 void imuPoll(uint32_t nowMs, uint16_t intervalMs);
-bool imuShakeEdge();          // einmaliger Impuls, verbraucht das Event
-uint16_t imuTakeSteps();      // Delta seit dem letzten Aufruf
-float imuLastMagG();          // letzte |a| in g, 0 wenn unbekannt
-float imuLastGyroDps();       // letzte |gyro| in deg/s
-uint8_t imuAddr();            // 0 wenn nicht gefunden
-uint32_t imuPedometer();      // Rohzaehler des Chips
-uint32_t imuSoftwarePedometer(); // eigener Zaehler aus Beschleunigungswerten
+/** Consumes and returns a pending shake edge event. */
+bool imuShakeEdge();
+/** Returns and clears the number of steps accumulated since the last call. */
+uint16_t imuTakeSteps();
+/** Returns the latest acceleration magnitude in g, or zero if unavailable. */
+float imuLastMagG();
+/** Returns the latest gyroscope magnitude in degrees per second. */
+float imuLastGyroDps();
+/** Returns the detected I2C address, or zero if no IMU was found. */
+uint8_t imuAddr();
+/** Returns the raw hardware pedometer count. */
+uint32_t imuPedometer();
+/** Returns the software step count derived from acceleration samples. */
+uint32_t imuSoftwarePedometer();

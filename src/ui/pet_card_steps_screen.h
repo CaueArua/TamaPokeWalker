@@ -3,6 +3,7 @@
 
 class PetCardStepsScreen : public PetCardPageScreen {
 public:
+  /** Draws step totals, trail rank, and walking rewards. */
   void renderPage() override;
 };
 

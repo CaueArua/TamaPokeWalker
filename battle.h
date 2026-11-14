@@ -67,14 +67,22 @@ struct BattleTurnResult {
   uint8_t enemyTypePct;
 };
 
+/** Checks whether the pet's current state permits starting a wild battle. */
 bool canStartWildBattle(bool isEgg, bool sleeping, uint8_t ceremony);
+/** Selects a wild opponent level relative to the player's level and luck roll. */
 uint8_t wildLevelFor(uint8_t petLevel, uint8_t luckRoll);
+/** Selects a wild species from the encounter table for the requested phase. */
 int16_t pickWildSpecies(uint8_t roll, uint8_t phase = 1);
+/** Calculates the battle stats for a wild species at the specified level. */
 BattleStats wildBattleStats(int16_t dex, uint8_t level);
+/** Returns the percentage damage multiplier for an attack/defender type matchup. */
 uint8_t battleTypeEffectPct(uint8_t attackType, uint8_t defendType1, uint8_t defendType2);
+/** Initializes the mutable state for a turn-based battle. */
 BattleRuntime beginBattleRuntime(const BattleStats &player, const BattleStats &enemy);
+/** Resolves one battle turn and updates the supplied runtime state. */
 BattleTurnResult stepBattle(BattleRuntime &battle, BattleAction action, uint8_t luckRoll);
 
+/** Resolves a complete battle using the supplied deterministic options. */
 BattleResult resolveBattle(const BattleStats &player,
                            const BattleStats &enemy,
                            const BattleOptions &options);

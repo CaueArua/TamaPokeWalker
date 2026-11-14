@@ -10,7 +10,6 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool cardOpen;
 extern bool cardDirty;
 extern const char *dexName(int16_t dex);
 extern void typeText(char *buf, size_t cap, const DexEntry &d);
@@ -176,15 +175,13 @@ void PetCardBoxScreen::handlePageTap(int16_t x, int16_t y) {
     if (row >= 0 && row < 5 && x >= 58 && x <= 408 && y >= 122 + row * 42 && y <= 156 + row * 42) {
       int16_t dex = dexAt((uint16_t)page * 5 + row);
       if (dex > 0) {
-        cardOpen = false;
-        dexScreen.openDetail(dex);
+        dexScreen.openDetail(dex, this);
         setScreen(&dexScreen);
         sfxPlay(SFX_TAP);
         speciesChirpPlay(dex);
       }
     } else if (y >= 400) {
-      cardOpen = false;
-      markUiDirty();
+      setScreen(nullptr);
       lockTouchBrief();
     }
   }

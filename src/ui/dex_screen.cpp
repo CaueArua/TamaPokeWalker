@@ -24,15 +24,17 @@ static constexpr int GAL_CELL = 74;
 
 DexScreen dexScreen;
 
-void DexScreen::openGrid() {
-  opened = true;
+void DexScreen::openGrid(Screen *returnTo) {
+  returnScreen = returnTo;
+  detailReturnsToScreen = false;
   page = 0;
   detail = 0;
   dirty = true;
 }
 
-void DexScreen::openDetail(int16_t dex) {
-  opened = true;
+void DexScreen::openDetail(int16_t dex, Screen *returnTo) {
+  returnScreen = returnTo;
+  detailReturnsToScreen = returnTo != nullptr;
   detail = dex;
   dirty = true;
   galleryPmd.unload();
@@ -42,12 +44,10 @@ void DexScreen::openDetail(int16_t dex) {
 }
 
 void DexScreen::onEnter() {
-  opened = true;
   dirty = true;
 }
 
 void DexScreen::onExit() {
-  opened = false;
   galleryPmd.unload();
 }
 
@@ -86,9 +86,17 @@ int16_t DexScreen::dexAt(uint16_t index) const {
 }
 
 void DexScreen::showDetail(int16_t dex) {
+  detailReturnsToScreen = false;
   detail = dex;
   galleryPmd.unload();
   galleryPmd.load(dex, pet.isShinyRegistered(dex));
+}
+
+void DexScreen::closeDex() {
+  Screen *target = returnScreen;
+  returnScreen = nullptr;
+  detailReturnsToScreen = false;
+  setScreen(target);
 }
 
 void DexScreen::render() {
@@ -219,6 +227,10 @@ void DexScreen::render() {
 
 void DexScreen::handleTap(int16_t x, int16_t y) {
   if (detail) {
+    if (detailReturnsToScreen) {
+      closeDex();
+      return;
+    }
     detail = 0;
     galleryPmd.unload();
     dirty = true;
@@ -227,7 +239,7 @@ void DexScreen::handleTap(int16_t x, int16_t y) {
   }
   if (y < 46) {
     sfxPlay(SFX_TAP);
-    setScreen(nullptr);
+    closeDex();
     return;
   }
   if (y >= 68 && y < GAL_Y) {
@@ -253,6 +265,10 @@ void DexScreen::handleTap(int16_t x, int16_t y) {
 
 void DexScreen::handleSwipe(int dir) {
   if (detail) {
+    if (detailReturnsToScreen) {
+      closeDex();
+      return;
+    }
     detail = 0;
     galleryPmd.unload();
     dirty = true;
@@ -262,7 +278,7 @@ void DexScreen::handleSwipe(int dir) {
   int nextPage = page - dir;
   int maxPage = pageCount() - 1;
   if (nextPage < 0) {
-    setScreen(nullptr);
+    closeDex();
     sfxPlay(SFX_TAP);
     return;
   }

@@ -4,6 +4,8 @@
 #include "../../pet.h"
 #include "../../dex.h"
 #include "../../audio.h"
+#include "../../i18n.h"
+#include "dex_screen.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -19,7 +21,7 @@ static constexpr uint16_t P_EMPTY = 0xE73D;
 static constexpr uint16_t P_RED   = 0xD249;
 static constexpr int P_CX = 233;
 
-// 1. Coordenadas da grade AMPLIADA da Party (2 linhas x 3 colunas = 400x278px)
+// Coordinates for the full party grid (two rows by three columns).
 static constexpr int LGRID_X0    = 33;
 static constexpr int LGRID_Y0    = 84;
 static constexpr int LGRID_W     = 128;
@@ -27,7 +29,7 @@ static constexpr int LGRID_H     = 134;
 static constexpr int LGRID_GAP_X = 8;
 static constexpr int LGRID_GAP_Y = 10;
 
-// 2. Coordenadas da grade COMPACTA da tela de Substituição (2 linhas x 3 colunas)
+// Coordinates for the compact replacement grid (two rows by three columns).
 static constexpr int SGRID_X0    = 54;
 static constexpr int SGRID_Y0    = 84;
 static constexpr int SGRID_W     = 114;
@@ -35,21 +37,25 @@ static constexpr int SGRID_H     = 106;
 static constexpr int SGRID_GAP_X = 8;
 static constexpr int SGRID_GAP_Y = 8;
 
+/** Returns the top-left coordinate of a full-size party cell. */
 static void largeCellRect(uint8_t idx, int &x, int &y) {
   x = LGRID_X0 + (idx % 3) * (LGRID_W + LGRID_GAP_X);
   y = LGRID_Y0 + (idx / 3) * (LGRID_H + LGRID_GAP_Y);
 }
 
+/** Returns the top-left coordinate of a compact replacement cell. */
 static void smallCellRect(uint8_t idx, int &x, int &y) {
   x = SGRID_X0 + (idx % 3) * (SGRID_W + SGRID_GAP_X);
   y = SGRID_Y0 + (idx / 3) * (SGRID_H + SGRID_GAP_Y);
 }
 
+/** Calculates a party slot's level from its stored age. */
 static uint8_t partySlotLevel(const PartySlot &slot) {
   uint8_t level = 1 + (slot.ageMinutes / MINUTES_PER_LEVEL);
   return level > 100 ? 100 : level;
 }
 
+/** Synchronizes the active pet and loads sprite data for occupied slots. */
 static void loadPartySprites(PmdMon sprites[PARTY_SIZE]) {
   pet.syncToParty();
   for (uint8_t i = 0; i < PARTY_SIZE; i++) {
@@ -61,12 +67,14 @@ static void loadPartySprites(PmdMon sprites[PARTY_SIZE]) {
   }
 }
 
+/** Releases sprite data for every party slot. */
 static void unloadPartySprites(PmdMon sprites[PARTY_SIZE]) {
   for (uint8_t i = 0; i < PARTY_SIZE; i++) {
     sprites[i].unload();
   }
 }
 
+/** Draws all party slots in either the full or compact layout. */
 static void drawPartyGrid(PmdMon sprites[PARTY_SIZE], bool largeMode) {
   uint32_t now = millis();
   int cellW = largeMode ? LGRID_W : SGRID_W;
@@ -131,8 +139,14 @@ static void drawPartyGrid(PmdMon sprites[PARTY_SIZE], bool largeMode) {
 PartyScreen partyScreen;
 PartyReplaceScreen partyReplaceScreen;
 
+void PartyReplaceScreen::closeReplacement() {
+  Screen *target = returnScreen;
+  returnScreen = nullptr;
+  setScreen(target);
+}
+
 // =========================================================================
-// 1. TELA DA PARTY EM GRADE AMPLIADA (2 LINHAS x 3 COLUNAS, SPRITES 3x)
+// Full party screen: two rows by three columns with 3x sprites.
 // =========================================================================
 
 void PartyScreen::onEnter() {
@@ -162,8 +176,15 @@ void PartyScreen::render() {
 
   gfx->setTextSize(1);
   gfx->setTextColor(UI_TRACK);
-  gfx->setCursor(P_CX - 57, 386);
-  gfx->print("< DESLIZE P/ VOLTAR");
+  gfx->fillRoundRect(76, 374, 116, 32, 8, UI_WHITE);
+  gfx->drawRoundRect(76, 374, 116, 32, 8, UI_INK);
+  gfx->setTextColor(UI_INK);
+  const char *dexLabel = T(S_SORT_DEX);
+  gfx->setCursor(134 - (int)strlen(dexLabel) * 3, 386);
+  gfx->print(dexLabel);
+  gfx->setTextColor(UI_TRACK);
+  gfx->setCursor(214, 386);
+  gfx->print("DESLIZE P/ VOLTAR");
 
   flushStampedFrame();
 }
@@ -183,8 +204,9 @@ void PartyScreen::handleTap(int16_t x, int16_t y) {
   }
 
   if (y >= 375) {
-    sfxPlay(SFX_TAP);
-    setScreen(nullptr);
+    dexScreen.openGrid(this);
+    setScreen(&dexScreen);
+    sfxPlay(SFX_MENU);
   }
 }
 
@@ -194,7 +216,7 @@ void PartyScreen::handleSwipe(int dir) {
 }
 
 // =========================================================================
-// 2. TELA DE SUBSTITUIÇÃO NA CAPTURA (GRADE COMPACTA + BOX DO CAPTURADO)
+// Catch replacement screen: compact party grid plus the newly caught species.
 // =========================================================================
 
 void PartyReplaceScreen::onEnter() {
@@ -269,7 +291,7 @@ void PartyReplaceScreen::handleTap(int16_t x, int16_t y) {
     if (x >= cx && x <= cx + SGRID_W && y >= cy && y <= cy + SGRID_H) {
       pet.replacePartySlot(i, pendingDex, pendingShiny, pendingLevel);
       sfxPlay(SFX_MEDAL);
-      setScreen(nullptr);
+      closeReplacement();
       return;
     }
   }
@@ -278,6 +300,6 @@ void PartyReplaceScreen::handleTap(int16_t x, int16_t y) {
   int btnY = 316 + 20;
   if (x >= btnX && x <= btnX + 74 && y >= btnY && y <= btnY + 42) {
     sfxPlay(SFX_TAP);
-    setScreen(nullptr);
+    closeReplacement();
   }
 }

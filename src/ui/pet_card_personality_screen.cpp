@@ -10,6 +10,7 @@ extern Pet pet;
 
 PetCardPersonalityScreen petCardPersonalityScreen;
 
+/** Maps a personality value to its localized name string. */
 static StrId personalityNameId(PetPersonality p) {
   switch (p) {
     case PERS_PLAYFUL: return S_PERS_PLAYFUL;
@@ -20,6 +21,7 @@ static StrId personalityNameId(PetPersonality p) {
   }
 }
 
+/** Maps a personality value to its localized hint string. */
 static StrId personalityHintId(PetPersonality p) {
   switch (p) {
     case PERS_PLAYFUL: return S_PERS_PLAYFUL_HINT;
@@ -30,6 +32,7 @@ static StrId personalityHintId(PetPersonality p) {
   }
 }
 
+/** Returns the display color assigned to a personality. */
 static uint16_t personalityColor(PetPersonality p) {
   switch (p) {
     case PERS_PLAYFUL: return UI_BAR_WARN;
@@ -40,6 +43,7 @@ static uint16_t personalityColor(PetPersonality p) {
   }
 }
 
+/** Draws one labeled personality record and its value. */
 static void drawPersonalityRecord(int x, int y, const char *label, uint16_t val, uint16_t color) {
   gfx->fillRoundRect(x, y, 118, 34, 8, UI_WHITE);
   gfx->drawRoundRect(x, y, 118, 34, 8, color);

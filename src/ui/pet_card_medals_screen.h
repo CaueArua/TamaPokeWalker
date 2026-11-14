@@ -3,6 +3,7 @@
 
 class PetCardMedalsScreen : public PetCardPageScreen {
 public:
+  /** Draws earned medals and their descriptions. */
   void renderPage() override;
 };
 

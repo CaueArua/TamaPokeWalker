@@ -11,19 +11,8 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool gameOpen;
-extern uint8_t gameScore;
-extern uint8_t gameMisses;
-extern uint32_t gameOverUntil;
-extern int16_t catchX, catchY;
-extern uint8_t catchIcon;
-extern uint32_t catchUntil, catchTargetUntil;
-extern float hitX, hitY;
-extern uint32_t hitTime;
 
 extern void drawGameScene();
-extern void finishCatchGame();
-extern void spawnCatchTarget();
 extern void flushStampedFrame();
 extern int sceneHour();
 extern void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette);
@@ -34,7 +23,7 @@ static constexpr int CATCH_CX = 233;
 
 void GameCatchScreen::handleTap(int16_t x, int16_t y) {
   if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
+  if (y < 72) { closeGame(); sfxPlay(SFX_TAP); return; }
   int dx = x - catchX, dy = y - catchY;
   if (dx * dx + dy * dy <= 52 * 52) {
     gameScore++;
@@ -42,9 +31,9 @@ void GameCatchScreen::handleTap(int16_t x, int16_t y) {
     hitY = catchY;
     hitTime = millis();
     sfxPlay(SFX_MINIGAME_OK);
-    spawnCatchTarget();
+    spawnTarget();
   } else if (++gameMisses >= 3) {
-    finishCatchGame();
+    finishGame();
   } else {
     sfxPlay(SFX_MINIGAME_BAD);
   }
@@ -53,19 +42,19 @@ void GameCatchScreen::handleTap(int16_t x, int16_t y) {
 void GameCatchScreen::render() {
   uint32_t now = millis();
   if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.catchHi, S_SPD_GAIN_FMT);
+    renderResult(T(S_RECORD_FMT), pet.catchHi, S_SPD_GAIN_FMT);
     return;
   }
   if (deadlineReached(now, catchUntil) || gameMisses >= 3) {
-    finishCatchGame();
+    finishGame();
     return;
   }
   if (deadlineReached(now, catchTargetUntil)) {
     if (++gameMisses >= 3) {
-      finishCatchGame();
+      finishGame();
       return;
     }
-    spawnCatchTarget();
+    spawnTarget();
   }
   drawGameScene();
   bool night = sceneHour() < 6 || sceneHour() >= 20;
@@ -98,4 +87,31 @@ void GameCatchScreen::render() {
   uint32_t ht = millis() - hitTime;
   if (hitTime && ht < 220) gfx->drawCircle((int)hitX, (int)hitY, 42 + ht / 8, UI_BAR_WARN);
   flushStampedFrame();
+}
+
+void GameCatchScreen::spawnTarget() {
+  catchX = 86 + random(294);
+  catchY = 118 + random(206);
+  catchIcon = random(3);
+  uint32_t life = 980;
+  uint32_t speedup = (uint32_t)gameScore * 35;
+  if (speedup > 530) speedup = 530;
+  life -= speedup;
+  catchTargetUntil = millis() + life;
+}
+
+void GameCatchScreen::start() {
+  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  resetGame();
+  catchUntil = millis() + 20000;
+  spawnTarget();
+  setScreen(&gameCatchScreen);
+  sfxPlay(SFX_GAME_START);
+}
+
+void GameCatchScreen::finishGame() {
+  gameNewHi = (gameScore > pet.catchHi);
+  gameGain = pet.applyCatchResult(gameScore);
+  sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
+  showResult();
 }

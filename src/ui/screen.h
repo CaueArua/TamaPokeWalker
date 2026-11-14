@@ -4,30 +4,46 @@
 
 class Screen {
 public:
+  /** Provides a virtual destructor for safe polymorphic screen use. */
   virtual ~Screen() {}
 
-  
-  virtual void onEnter() {} // Chamado uma vez quando a tela é aberta
-  virtual void onExit() {} // Chamado uma vez quando a tela é fechada
+  /** Runs once when the screen becomes active. */
+  virtual void onEnter() {}
+  /** Runs once when the screen stops being active. */
+  virtual void onExit() {}
 
-  // Desenha a tela (deve chamar flushStampedFrame() no final)
+  /** Draws the screen and submits its completed frame. */
   virtual void render() = 0;
 
-  // Eventos de toque e deslize
+  /** Handles a tap at the supplied display coordinates. */
   virtual void handleTap(int16_t x, int16_t y) {}
+  /** Handles the press phase of a touch gesture. */
   virtual void handlePress(int16_t y) {}
-  virtual uint32_t longPressDelayMs() const { return 700; } // Tempo padrão (customizável por tela)
+  /** Returns the hold duration required to trigger a long press. */
+  virtual uint32_t longPressDelayMs() const { return 700; }
+  /** Handles a completed long press at the supplied coordinates. */
   virtual void handleLongPress(int16_t x, int16_t y, uint32_t durationMs) {}
-  virtual void handleSwipe(int dir) {}    // -1 = Esquerda, +1 = Direita
-  virtual void handleSwipeV(int dir) {}   // -1 = Cima, +1 = Baixo
+  /** Handles a horizontal swipe; -1 is left and +1 is right. */
+  virtual void handleSwipe(int dir) {}
+  /** Handles a vertical swipe; -1 is up and +1 is down. */
+  virtual void handleSwipeV(int dir) {}
+  /** Returns whether taps should be delivered on press rather than release. */
+  virtual bool handlesTapOnPress() const { return false; }
+  /** Returns whether this screen represents a minigame. */
+  virtual bool isMinigame() const { return false; }
+  /** Returns whether this screen is one of the pet-card pages. */
+  virtual bool isPetCardPage() const { return false; }
+  /** Returns whether the screen has requested to close. */
+  virtual bool shouldClose() const { return false; }
 
-  // Opcional: retorna true se a tela é estática e não precisa redesenhar neste frame
+  /** Returns whether a static screen can skip rendering because it is clean. */
   virtual bool isStaticClean() const { return false; }
+  /** Marks screen content as needing a redraw. */
   virtual void markDirty() {}
 };
 
-// Ponteiro global para a tela ativa (nullptr = tela principal do Tamagotchi)
+/** Active modular screen, or null while the main screen is active. */
 extern Screen* activeScreen;
 
-// Função auxiliar para trocar de tela de forma segura
+/** Exits the current screen and activates the requested screen. */
 void setScreen(Screen* next);

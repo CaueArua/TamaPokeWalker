@@ -3,6 +3,7 @@
 
 class PetCardDailyScreen : public PetCardPageScreen {
 public:
+  /** Draws daily goals and their completion state. */
   void renderPage() override;
 };
 

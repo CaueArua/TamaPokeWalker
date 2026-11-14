@@ -2,12 +2,14 @@
 
 #include "dex.h"
 
+/** Clamps a synthesized note frequency to the supported pitch range. */
 static uint16_t clampPitch(int value) {
   if (value < 140) return 140;
   if (value > 2600) return 2600;
   return (uint16_t)value;
 }
 
+/** Returns the pitch adjustment assigned to a species type. */
 static int typePitchOffset(uint8_t type) {
   switch (type) {
     case TYPE_ELECTRIC: return 210;
@@ -50,9 +52,9 @@ bool speciesChirpProfile(int16_t dex, SpeciesChirpProfile *out) {
     (uint8_t)(74 + ((seed >> 1) & 0x0F)),
     (uint8_t)((seed >> 3) % 3),
   };
-  // Die dritte Frequenz enthaelt bewusst die Dexnummer direkt. Bis #251
-  // bleibt der bisherige Klang erhalten; Gen 3 bekommt einen separaten,
-  // hoerbaren Bereich, der innerhalb des sicheren Frequenzfensters bleibt.
+  // The third note intentionally incorporates the Dex number. Species through
+  // #251 retain their previous sound; later species use a separate audible
+  // range that remains within the safe frequency limits.
   uint16_t dexPitch = dex <= 251 ? (uint16_t)(220 + dex * 9)
                                 : (uint16_t)(150 + (dex - 252) * 7);
   out->notes[2] = {

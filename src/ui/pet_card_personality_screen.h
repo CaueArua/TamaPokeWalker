@@ -3,6 +3,7 @@
 
 class PetCardPersonalityScreen : public PetCardPageScreen {
 public:
+  /** Draws the pet's personality and its description. */
   void renderPage() override;
 };
 

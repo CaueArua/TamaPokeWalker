@@ -5,8 +5,8 @@
 
 Lang gLang = LANG_DEFAULT;
 
-// Tabla de cadenas [idioma][id]. Sin acentos ni enes: la fuente bitmap del
-// firmware no los tiene (por eso el espanol ya iba "Esta", "bano", etc.).
+// String table indexed by language and string ID. Firmware bitmap fonts do not
+// include accented characters, so localized strings use unaccented spellings.
 static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
   // ---------------- ES ----------------
   {
@@ -382,7 +382,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
   },
 };
 
-// Nombres de medalla en sus tres longitudes [idioma][medalla].
+// Medal names in three lengths, indexed by language and medal.
 static const char *const MED_NAME[LANG_COUNT][MED_COUNT] = {
   { "Nv.10", "Nv.25", "Nv.50", "BAYA", "RACHA 7", "VINCULO", "FORMA TOPE", "EN FORMA", "EXPLORADOR HOENN" },
   { "Lv.10", "Lv.25", "Lv.50", "BERRY", "7 STREAK", "BOND", "TOP FORM", "IN SHAPE", "HOENN EXPLORER" },
@@ -428,7 +428,7 @@ const char *medalDesc(int i)  { return MED_DSC[gLang][i]; }
 
 void loadLang() {
   Preferences p;
-  p.begin("tamapoke", true);  // solo lectura
+  p.begin("tamapoke", true);  // Read-only access.
   uint8_t v = p.getUChar("lang", LANG_DEFAULT);
   p.end();
   gLang = (v < LANG_COUNT) ? (Lang)v : LANG_DEFAULT;

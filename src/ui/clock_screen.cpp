@@ -12,7 +12,6 @@ extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern PmdMon pmd;
 extern SdMon mon;
-extern bool clockOpen;
 extern bool clockDirty;
 extern bool powerSave;
 extern int clockH;
@@ -30,10 +29,16 @@ void ClockSettingsScreen::applyTime() {
   uint32_t e = (base / 86400) * 86400 + (uint32_t)clockH * 3600 + (uint32_t)clockM * 60;
   rtcSetEpoch(e);
   pet.setClock(e);
-  clockOpen = false;
-  setScreen(nullptr);
+  closeSettings();
 }
 
+void ClockSettingsScreen::closeSettings() {
+  Screen *target = returnScreen;
+  returnScreen = nullptr;
+  setScreen(target);
+}
+
+/** Draws one clock-adjustment button. */
 void drawClockBtn(int x, int y, const char *l) {
   gfx->fillRoundRect(x, y, 58, 58, 12, UI_WHITE);
   gfx->drawRoundRect(x, y, 58, 58, 12, UI_INK);
@@ -43,16 +48,17 @@ void drawClockBtn(int x, int y, const char *l) {
   gfx->print(l);
 }
 
-// pildoras de idioma centradas en y; rellena la activa
+// Language selection pills are centered on y; the active option is filled.
 #define LANG_PILL_Y 296
 #define LANG_PILL_H 30
-#define LANG_PILL_X 336          // pildora de idioma (cicla los 6 al tocar)
+#define LANG_PILL_X 336          // Language pill; tapping cycles through all six.
 #define LANG_PILL_W 96
 #define SOUND_PILL_X 24
 #define SOUND_PILL_W 116
 #define PSAVE_PILL_X 150
 #define PSAVE_PILL_W 176
 
+/** Returns the localized label for the selected sound mode. */
 const char *soundModeLabel() {
   switch (audioMode()) {
     case SOUND_FULL: return T(S_SND_FULL);
@@ -62,6 +68,7 @@ const char *soundModeLabel() {
   }
 }
 
+/** Returns the next sound mode in the settings cycle. */
 uint8_t nextSoundMode() {
   switch (audioMode()) {
     case SOUND_FULL: return SOUND_MED;
@@ -72,10 +79,12 @@ uint8_t nextSoundMode() {
 }
 static const char *const LANG_CODES[LANG_COUNT] = { "ES", "EN", "FR", "DE", "IT", "PT" };
 
+/** Returns the localized label for the power-saving setting. */
 const char *powerSaveLabel() {
   return powerSave ? T(S_PSAVE_ON) : T(S_PSAVE_OFF);
 }
 
+/** Draws a label and its value on the settings screen. */
 void drawStatusLine(int y, const char *label, const char *value, uint16_t valueColor) {
   gfx->setTextSize(1);
   gfx->setTextColor(UI_TRACK);
@@ -111,7 +120,7 @@ void ClockSettingsScreen::render() {
   gfx->setCursor(276, 256);
   gfx->print(T(S_MIN));
 
-  // selector de sonido: mucho / medio / poco / apagado
+  // Sound selector: full, medium, low, or off.
   uint8_t sndMode = audioMode();
   const char *sl = soundModeLabel();
   gfx->fillRoundRect(SOUND_PILL_X, LANG_PILL_Y, SOUND_PILL_W, LANG_PILL_H, 8, sndMode ? UI_BAR_OK : UI_WHITE);
@@ -121,7 +130,7 @@ void ClockSettingsScreen::render() {
   gfx->setCursor(SOUND_PILL_X + (SOUND_PILL_W - (int)strlen(sl) * 12) / 2, LANG_PILL_Y + 8);
   gfx->print(sl);
 
-  // selector de ahorro opcional: apagado por defecto, persistente
+  // Optional power-saving selector; off by default and persisted.
   const char *pl = powerSaveLabel();
   gfx->fillRoundRect(PSAVE_PILL_X, LANG_PILL_Y, PSAVE_PILL_W, LANG_PILL_H, 8, powerSave ? UI_BAR_WARN : UI_WHITE);
   gfx->drawRoundRect(PSAVE_PILL_X, LANG_PILL_Y, PSAVE_PILL_W, LANG_PILL_H, 8, UI_INK);
@@ -130,7 +139,7 @@ void ClockSettingsScreen::render() {
   gfx->setCursor(PSAVE_PILL_X + (PSAVE_PILL_W - (int)strlen(pl) * 12) / 2, LANG_PILL_Y + 8);
   gfx->print(pl);
 
-  // selector de idioma: una pildora que cicla los 6 idiomas al tocar
+  // Language selector pill cycles through all six options when tapped.
   gfx->fillRoundRect(LANG_PILL_X, LANG_PILL_Y, LANG_PILL_W, LANG_PILL_H, 8, UI_WHITE);
   gfx->drawRoundRect(LANG_PILL_X, LANG_PILL_Y, LANG_PILL_W, LANG_PILL_H, 8, UI_INK);
   char lp[10];
@@ -172,7 +181,7 @@ void ClockSettingsScreen::render() {
 }
 
 void ClockSettingsScreen::handleTap(int16_t x, int16_t y) {
-  if (y >= 190 && y <= 248) {  // fila de botones +/-
+  if (y >= 190 && y <= 248) {  // Plus/minus button row.
     if (x >= 104 && x < 162) clockH = (clockH + 23) % 24;
     else if (x >= 170 && x < 228) clockH = (clockH + 1) % 24;
     else if (x >= 252 && x < 310) clockM = (clockM + 59) % 60;
@@ -184,7 +193,7 @@ void ClockSettingsScreen::handleTap(int16_t x, int16_t y) {
     if (x >= SOUND_PILL_X && x < SOUND_PILL_X + SOUND_PILL_W) {
       audioSetMode(nextSoundMode());
       clockDirty = true;
-      if (audioEnabled()) sfxPlay(SFX_LEVEL);  // confirma el nuevo modo si no esta apagado
+      if (audioEnabled()) sfxPlay(SFX_LEVEL);  // Confirm the new mode when sound is enabled.
       return;
     }
     if (x >= PSAVE_PILL_X && x < PSAVE_PILL_X + PSAVE_PILL_W) {
@@ -202,5 +211,18 @@ void ClockSettingsScreen::handleTap(int16_t x, int16_t y) {
   }
   if (y >= 404 && y <= 444 && x >= 96 && x <= 206) { openHelp(); return; }
   if (y >= 404 && y <= 444 && x >= 230 && x <= 386) { applyTime(); return; }
+}
+
+void ClockSettingsScreen::handleSwipeV(int) {
+  closeSettings();
+  sfxPlay(SFX_TAP);
+}
+
+bool ClockSettingsScreen::isStaticClean() const {
+  return !clockDirty;
+}
+
+void ClockSettingsScreen::markDirty() {
+  clockDirty = true;
 }
 

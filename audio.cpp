@@ -8,11 +8,10 @@
 #include <Preferences.h>
 
 // ---------------------------------------------------------------------------
-// Audio del TamaPoke: códec ES8311 (DAC -> amplificador PA -> altavoz) por I2S.
-// Init del ES8311 portado del driver oficial de Espressif (esp-bsp), fijado a
-// MCLK=4.096MHz (256*fs), 16kHz, 16-bit, esclavo I2S. Los efectos son tonos
-// cuadrados (estilo Game Boy) sintetizados en una tarea aparte para no
-// bloquear el loop de juego.
+// TamaPoke audio uses an ES8311 codec (DAC -> PA amplifier -> speaker) over I2S.
+// ES8311 initialization is adapted from Espressif's official esp-bsp driver and
+// configured for 4.096 MHz MCLK (256*fs), 16 kHz, 16-bit slave I2S. Sound
+// effects are synthesized in a separate task so the game loop remains unblocked.
 // ---------------------------------------------------------------------------
 
 #define ES8311_ADDR 0x18
@@ -32,13 +31,15 @@ struct AudioEvent {
   uint16_t value;
 };
 
-// ---- I2C del códec ----
+// ES8311 codec I2C access.
+/** Writes one register on the ES8311 codec. */
 static bool esW(uint8_t reg, uint8_t val) {
   Wire.beginTransmission(ES8311_ADDR);
   Wire.write(reg);
   Wire.write(val);
   return Wire.endTransmission() == 0;
 }
+/** Reads one register from the ES8311 codec. */
 static uint8_t esR(uint8_t reg) {
   Wire.beginTransmission(ES8311_ADDR);
   Wire.write(reg);
@@ -47,24 +48,24 @@ static uint8_t esR(uint8_t reg) {
   return Wire.available() ? Wire.read() : 0;
 }
 
-// Secuencia de init VERIFICADA EN ESTA PLACA (proyecto PlaneRadar2.0, misma
-// Waveshare 1.75). Clave: reloj DERIVADO DEL BCLK (reg01=0xBF, sin MCLK externo)
-// y referencia interna que alimenta el DAC (reg44=0x58); sin esos dos el codec
-// respondia por I2C pero no salia audio. 16kHz, 16-bit, esclavo I2S.
+// This initialization sequence is verified on the same Waveshare 1.75 board.
+// It uses BCLK as the clock source and the internal DAC reference; without
+// these settings the codec responds over I2C but produces no audio.
+/** Configures the ES8311 for 16 kHz, 16-bit slave-I2S playback. */
 static bool es8311Init() {
   Wire.beginTransmission(ES8311_ADDR);
   if (Wire.endTransmission() != 0) return false;
 
   // open()
-  esW(0x0D, 0xFA); esW(0x44, 0x08); esW(0x44, 0x08);  // power up + quirk de 1a escritura
+  esW(0x0D, 0xFA); esW(0x44, 0x08); esW(0x44, 0x08);  // Power up and first-write quirk.
   esW(0x01, 0x30); esW(0x02, 0x00); esW(0x03, 0x10); esW(0x16, 0x24);
   esW(0x04, 0x10); esW(0x05, 0x00); esW(0x0B, 0x00); esW(0x0C, 0x00);
   esW(0x10, 0x1F); esW(0x11, 0x7F);
-  esW(0x00, 0x80); esW(0x00, 0x80);                   // reset clock, esclavo
-  esW(0x01, 0xBF);                                    // clk src = BCLK (sin MCLK externo)
-  { uint8_t r = esR(0x06); r &= ~0x20; esW(0x06, r); }  // SCLK no invertido
+  esW(0x00, 0x80); esW(0x00, 0x80);                   // Reset clock and select slave mode.
+  esW(0x01, 0xBF);                                    // Use BCLK as the source, without external MCLK.
+  { uint8_t r = esR(0x06); r &= ~0x20; esW(0x06, r); }  // Do not invert SCLK.
   esW(0x13, 0x10); esW(0x1B, 0x0A); esW(0x1C, 0x6A);
-  esW(0x44, 0x58);                                    // referencia interna -> alimenta el DAC
+  esW(0x44, 0x58);                                    // Route the internal reference to the DAC.
 
   // config_sample(): BCLK*8 = DIG_MCLK
   esW(0x02, 0x18); esW(0x05, 0x00); esW(0x03, 0x10); esW(0x04, 0x20);
@@ -86,7 +87,7 @@ static bool es8311Init() {
   return true;
 }
 
-// ---- sintetizador pequeño: onda, volumen, slide y ruido ----
+// Compact waveform synthesizer supporting pitch slides and noise.
 enum Wave : uint8_t { W_SQUARE = 0, W_TRI, W_SOFT, W_NOISE };
 struct Note {
   uint16_t f, ms;
@@ -160,7 +161,7 @@ static const uint8_t SFX_MIN_MODE[SFX_COUNT] = {
   SOUND_MED,  // EAT
   SOUND_FULL, // PLAY: kleine Punkte/Klicks nur "viel"
   SOUND_MED,  // HEART
-  SOUND_LOW,  // HATCH: grosses Ereignis
+  SOUND_LOW,  // HATCH: major event.
   SOUND_LOW,  // EVOLVE
   SOUND_LOW,  // MEDAL
   SOUND_LOW,  // DENY: wichtiges Feedback auch bei wenig
@@ -197,14 +198,16 @@ static const uint8_t SFX_MIN_MODE[SFX_COUNT] = {
   SOUND_MED,  // ITEM_USE
 };
 
-static int16_t buf[256 * 2];  // estéreo intercalado (L=R)
+static int16_t buf[256 * 2];  // Interleaved stereo samples (left = right).
 
 static uint16_t noiseState = 0xACE1;
+/** Advances the noise generator and returns one signed sample. */
 static int16_t nextNoise() {
   noiseState = (uint16_t)((noiseState >> 1) ^ (-(noiseState & 1u) & 0xB400u));
   return (noiseState & 1) ? 1 : -1;
 }
 
+/** Produces one sample for the requested waveform and phase. */
 static int16_t oscSample(uint8_t wave, int phase, int period, int16_t amp) {
   if (wave == W_NOISE) return (int16_t)(nextNoise() * amp);
   if (period <= 1) return 0;
@@ -223,6 +226,7 @@ static int16_t oscSample(uint8_t wave, int phase, int period, int16_t amp) {
   return (p < period / 2) ? amp : -amp;
 }
 
+/** Returns the output gain percentage for the selected sound mode. */
 static uint8_t modeGainPct() {
   switch (gMode) {
     case SOUND_LOW: return 58;
@@ -232,11 +236,12 @@ static uint8_t modeGainPct() {
   }
 }
 
+/** Returns whether a sound effect is allowed at the lowest volume mode. */
 static bool criticalSfx(uint8_t id) {
   return id < SFX_COUNT && SFX_MIN_MODE[id] == SOUND_LOW;
 }
 
-// reproduce una nota con rampa anti-click; f==0 es silencio salvo W_NOISE.
+/** Synthesizes and writes one note, using short fades to prevent clicks. */
 static void playTone(const Note &note) {
   uint16_t f = note.f;
   uint16_t ms = note.ms;
@@ -271,6 +276,7 @@ static void playTone(const Note &note) {
   }
 }
 
+/** Builds and plays the synthetic chirp profile for a species. */
 static void playSpeciesChirp(uint16_t dex) {
   SpeciesChirpProfile profile{};
   if (!speciesChirpProfile(dex, &profile)) return;
@@ -283,6 +289,7 @@ static void playSpeciesChirp(uint16_t dex) {
   }
 }
 
+/** Consumes queued audio events and plays their sounds on the audio task. */
 static void audioTask(void *) {
   AudioEvent event;
   for (;;) {
@@ -292,25 +299,25 @@ static void audioTask(void *) {
     if (isSfx && gMode < SFX_MIN_MODE[event.value]) continue;
     if (isSfx || isChirp) {
       gBusy = true;
-      digitalWrite(PA, HIGH);  // enciende el amplificador
-      delay(8);                // deja que arranque
+      digitalWrite(PA, HIGH);  // Enable the amplifier.
+      delay(8);                // Allow the amplifier to start.
       if (isSfx) {
         const SfxDef &d = SFX[event.value];
         for (uint8_t i = 0; i < d.len; i++) playTone(d.n[i]);
       } else {
         playSpeciesChirp(event.value);
       }
-      delay(gMode == SOUND_FULL ? 90 : 60);  // deja salir la cola del DMA antes de cortar
-      digitalWrite(PA, LOW);                 // apaga el amp entre sonidos (evita siseo)
+      delay(gMode == SOUND_FULL ? 90 : 60);  // Let the DMA queue drain before stopping.
+      digitalWrite(PA, LOW);                 // Disable the amplifier between sounds.
       gBusy = false;
     }
   }
 }
 
 void audioBegin() {
-  // I2S primero: arranca el MCLK que necesita el códec para engancharse
+  // Start I2S first so the codec can lock to its clock.
   pinMode(PA, OUTPUT);
-  digitalWrite(PA, LOW);   // amp apagado; la tarea lo enciende al reproducir
+  digitalWrite(PA, LOW);   // Keep the amplifier off until the audio task plays a sound.
 
   i2s.setPins(I2S_BCK_IO, I2S_WS_IO, I2S_DO_IO, I2S_DI_IO, I2S_MCK_IO);
   if (!i2s.begin(I2S_MODE_STD, SAMPLE_RATE, I2S_DATA_BIT_WIDTH_16BIT,
@@ -333,15 +340,14 @@ void audioBegin() {
   gReady = true;
   gQ = xQueueCreate(32, sizeof(AudioEvent));
   xTaskCreatePinnedToCore(audioTask, "audio", 4096, nullptr, 1, nullptr, 0);
-  sfxPlay(SFX_HATCH);  // jingle de arranque (confirma que suena)
+  sfxPlay(SFX_HATCH);  // Play a startup jingle to confirm audio is working.
 }
 
 void sfxPlay(uint8_t id) {
   if (!gReady || gMode == SOUND_OFF || !gQ || id >= SFX_COUNT || gMode < SFX_MIN_MODE[id]) return;
 
-  // Die Modi sollen sich spuerbar anfuehlen: "viel" spielt alles, "mittel"
-  // laesst schnelle Wiederholungen etwas aus, "wenig" bleibt bei grossen
-  // Ereignissen und klaren Warnungen.
+  // Keep the sound modes distinct: full plays everything, medium filters
+  // rapid repeats, and low is reserved for major events and clear warnings.
   uint32_t now = millis();
   if (gMode == SOUND_MED && !criticalSfx(id)) {
     if (now - gLastQueuedAt[gMode] < 180UL) return;

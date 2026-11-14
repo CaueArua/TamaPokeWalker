@@ -10,6 +10,7 @@ extern Pet pet;
 
 PetCardStepsScreen petCardStepsScreen;
 
+/** Maps a step milestone index to its localized reward label. */
 static StrId stepRewardTextId(uint8_t index) {
   if (index == 0) return S_ITEM_SNACK;
   if (index == 1) return S_ITEM_ENERGY;

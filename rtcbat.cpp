@@ -10,6 +10,7 @@ static XPowersPMU pmu;
 static bool rtcOk = false;
 static bool pmuOk = false;
 
+/** Applies the configured USB current and battery charging limits. */
 static void configureBatteryCharger() {
   if (!pmuOk) return;
   pmu.setVbusCurrentLimit(XPOWERS_AXP2101_VBUS_CUR_LIM_900MA);
@@ -33,7 +34,7 @@ bool rtcBegin() {
 uint32_t rtcEpoch() {
   if (!rtcOk) return 0;
   RTC_DateTime t = rtc.getDateTime();
-  if (t.getYear() < 2025 || t.getYear() > 2120) return 0;  // sin hora valida
+  if (t.getYear() < 2025 || t.getYear() > 2120) return 0;  // Invalid RTC time.
   struct tm tmv = {};
   tmv.tm_year = t.getYear() - 1900;
   tmv.tm_mon = t.getMonth() - 1;
@@ -41,7 +42,7 @@ uint32_t rtcEpoch() {
   tmv.tm_hour = t.getHour();
   tmv.tm_min = t.getMinute();
   tmv.tm_sec = t.getSecond();
-  time_t e = mktime(&tmv);  // TZ por defecto = UTC, consistente con gmtime_r
+  time_t e = mktime(&tmv);  // The default timezone is UTC, matching gmtime_r.
   return e > 0 ? (uint32_t)e : 0;
 }
 
@@ -61,10 +62,9 @@ bool batBegin() {
   return pmuOk;
 }
 
-// Enciende la alimentacion de la AMOLED. En la Waveshare 1.75 el panel (OLED VDD)
-// cuelga del rail BLDO1 a 3.3V del AXP2101. El firmware daba por hecho que estaba
-// encendido; si el PMU se resetea (drenaje total), BLDO1 queda OFF y la pantalla
-// se ve negra aunque el resto funcione. Hay que llamarla ANTES de gfx->begin().
+// Powers the AMOLED panel from the AXP2101 BLDO1 3.3 V rail. The rail may be
+// disabled after a PMU reset, leaving the display black while the rest of the
+// board still runs. Call this before gfx->begin().
 void pmuEnablePanel() {
   if (!pmu.begin(Wire, AXP2101_SLAVE_ADDRESS, IIC_SDA, IIC_SCL)) {
     Serial.println("AXP2101 no detectado (pmuEnablePanel)");
@@ -74,13 +74,14 @@ void pmuEnablePanel() {
   pmu.enableBLDO1();
 }
 
-// el estado de energia (I2C) se cachea ~2 s: leerlo en cada frame del loop
-// metia trafico I2C inutil y podia oscilar (parpadeo de brillo)
+// Cache power state for about two seconds to avoid per-frame I2C traffic and
+// brightness flicker.
 static uint32_t powerCacheT = 0;
 static uint32_t powerCacheMs = 2000;
 static int cachedPct = -1;
 static bool cachedCharging = false, cachedUsb = true;
 
+/** Refreshes cached battery and USB state when the cache expires. */
 static void refreshPower() {
   uint32_t now = millis();
   if (powerCacheT && now - powerCacheT < powerCacheMs) return;

@@ -1,11 +1,11 @@
 #pragma once
 
-// Pines oficiales de la Waveshare ESP32-S3-Touch-AMOLED-1.75
-// Fuente: github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75 (libraries/Mylibrary/pin_config.h)
+// Pin assignments for the Waveshare ESP32-S3-Touch-AMOLED-1.75.
+// Source: github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75 (libraries/Mylibrary/pin_config.h)
 
 #define XPOWERS_CHIP_AXP2101
 
-// Pantalla AMOLED 466x466, driver CO5300 por QSPI
+// 466x466 AMOLED display with CO5300 over QSPI.
 #define LCD_SDIO0 4
 #define LCD_SDIO1 5
 #define LCD_SDIO2 6
@@ -16,15 +16,15 @@
 #define LCD_WIDTH 466
 #define LCD_HEIGHT 466
 
-// Táctil capacitivo CST9217 por I2C
+// CST9217 capacitive touch controller over I2C.
 #define IIC_SDA 15
 #define IIC_SCL 14
 #define TP_INT 11
 #define TP_RESET 2
 
-// Audio ES8311. NOTA: el MCLK real es GPIO42 (verificado en placa con el
-// proyecto PlaneRadar2.0); el 16 que figuraba era erroneo. Aun asi el codec se
-// configura con reloj derivado del BCLK, asi que el MCLK apenas importa.
+// ES8311 audio. The actual MCLK is GPIO42 (verified on the board with
+// PlaneRadar2.0); GPIO16 was listed previously. The codec uses a clock derived
+// from BCLK, so MCLK has little effect on its configuration.
 #define I2S_MCK_IO 16
 #define I2S_BCK_IO 9
 #define I2S_DI_IO 10
@@ -32,12 +32,12 @@
 #define I2S_DO_IO 8
 #define PA 46
 
-// QMI8658 (6-Achsen-IMU) sitzt auf demselben I2C-Bus wie Touch/RTC/PMU.
-// 7-bit-Adresse 0x6B (QMI8658_L_SLAVE_ADDRESS). Kein INT-Pin in diesem Pinout:
-// Firmware pollt, statt auf einen Wake-GPIO zu warten.
+// The QMI8658 six-axis IMU shares I2C with touch, RTC, and PMU.
+// Its 7-bit address is 0x6B. This pinout has no IMU interrupt pin, so firmware
+// polls the sensor rather than waiting on a wake GPIO.
 #define QMI8658_I2C_ADDR 0x6B
 
-// Ranura TF (no usada todavía)
+// TF card slot (not currently used).
 #define SDMMC_CLK -1
 #define SDMMC_CMD -1
 #define SDMMC_DATA -1

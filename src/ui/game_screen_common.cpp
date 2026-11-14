@@ -8,21 +8,36 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool gameOpen;
-extern bool gameNewHi;
-extern uint8_t gameScore;
-extern uint8_t gameGain;
-extern uint32_t gameOverUntil;
 extern void drawGameScene();
 extern int sceneHour();
 extern void flushStampedFrame();
 
 static constexpr int GAME_RESULT_CX = 233;
 
-void drawGameResult(const char *recordFmt, uint16_t record, StrId gainFmt) {
+void MinigameScreen::resetGame() {
+  gameScore = 0;
+  gameMisses = 0;
+  gameOverUntil = 0;
+  gameNewHi = false;
+  gameGain = 0;
+  hitX = 0;
+  hitY = 0;
+  hitTime = 0;
+  closeRequested = false;
+}
+
+void MinigameScreen::showResult(uint32_t durationMs) {
+  gameOverUntil = millis() + durationMs;
+}
+
+void MinigameScreen::closeGame() {
+  closeRequested = true;
+}
+
+void MinigameScreen::renderResult(const char *recordFmt, uint16_t record, StrId gainFmt) {
   drawGameScene();
   if (deadlineReached(millis(), gameOverUntil)) {
-    gameOpen = false;
+    closeRequested = true;
     return;
   }
   bool night = sceneHour() < 6 || sceneHour() >= 20;

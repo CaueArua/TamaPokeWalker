@@ -1,19 +1,21 @@
 #pragma once
 #include <stdint.h>
 
-// Efectos de sonido del juego (cola, no bloqueante). El orden coincide con la
-// tabla SFX de audio.cpp.
+/**
+ * Sound effects played through the non-blocking audio queue.
+ * The values are ordered to match the sound-effect table in audio.cpp.
+ */
 enum Sfx : uint8_t {
-  SFX_TAP = 0,  // tocar / boton
-  SFX_EAT,      // comer
-  SFX_PLAY,     // punto del minijuego / golpe
-  SFX_HEART,    // le gusta / mimo
-  SFX_HATCH,    // eclosion
-  SFX_EVOLVE,   // evolucion
-  SFX_MEDAL,    // medalla / hito
-  SFX_DENY,     // accion no permitida
-  SFX_BYE,      // despedida
-  SFX_LEVEL,    // sube de nivel
+  SFX_TAP = 0,  // Touch or button press.
+  SFX_EAT,      // Feeding.
+  SFX_PLAY,     // Minigame score or hit.
+  SFX_HEART,    // Affection or petting.
+  SFX_HATCH,    // Egg hatching.
+  SFX_EVOLVE,   // Evolution.
+  SFX_MEDAL,    // Medal or milestone.
+  SFX_DENY,     // Rejected action.
+  SFX_BYE,      // Farewell.
+  SFX_LEVEL,    // Level up.
   SFX_BATTLE_WIN,
   SFX_BATTLE_LOSS,
   SFX_CATCH_OK,
@@ -53,11 +55,19 @@ enum SoundMode : uint8_t {
   SOUND_FULL,
 };
 
-void audioBegin();          // init ES8311 + I2S + amplificador + tarea de audio
-void sfxPlay(uint8_t id);   // encola un efecto (no bloquea el loop)
+/** Initializes the ES8311 codec, I2S output, amplifier, and audio task. */
+void audioBegin();
+/** Queues a sound effect without blocking the main loop. */
+void sfxPlay(uint8_t id);
+/** Enables or disables sound playback. */
 void audioSetEnabled(bool on);
+/** Returns whether sound playback is enabled. */
 bool audioEnabled();
+/** Selects the output volume mode. */
 void audioSetMode(uint8_t mode);
+/** Returns the currently selected output volume mode. */
 uint8_t audioMode();
+/** Returns whether the audio task is currently playing a sound. */
 bool audioBusy();
-void speciesChirpPlay(int16_t dex, bool force = false);  // eigener, synthetisierter Spezies-Chirp
+/** Plays the synthetic chirp assigned to a species. */
+void speciesChirpPlay(int16_t dex, bool force = false);

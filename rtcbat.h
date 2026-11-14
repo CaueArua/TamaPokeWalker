@@ -1,20 +1,27 @@
 #pragma once
 #include <Arduino.h>
 
-// RTC PCF85063: hora persistente mientras la placa tenga alimentacion
+/** Initializes the PCF85063 RTC. */
 bool rtcBegin();
-uint32_t rtcEpoch();             // segundos unix; 0 si el RTC no es valido
+/** Returns the RTC time as Unix seconds, or zero if the clock is invalid. */
+uint32_t rtcEpoch();
+/** Sets the RTC to a Unix timestamp. */
 void rtcSetEpoch(uint32_t e);
 
-// PMU AXP2101: estado de la bateria
+/** Initializes the AXP2101 power-management unit. */
 bool batBegin();
-void pmuEnablePanel();           // enciende BLDO1 (OLED VDD 3.3V); llamar antes de gfx->begin()
-int batPercent();                // 0-100, -1 si no hay bateria conectada
+/** Enables BLDO1 for the OLED 3.3 V rail; call before gfx->begin(). */
+void pmuEnablePanel();
+/** Returns battery charge from 0 to 100, or -1 when no battery is connected. */
+int batPercent();
+/** Returns whether the battery is charging. */
 bool batCharging();
+/** Returns whether USB power is present. */
 bool usbPresent();
+/** Sets how long cached power data remains valid. */
 void setPowerCacheInterval(uint32_t ms);
 
-// boton PWR del AXP2101: pulsacion larga 4s = apagado fisico (RTC sigue vivo);
-// la pulsacion corta la captura el firmware (pantalla on/off)
+/** Configures the AXP2101 power button. */
 void pwrSetup();
-bool pwrShortPressed();  // sondear en el loop
+/** Polls for and consumes a short power-button press. */
+bool pwrShortPressed();

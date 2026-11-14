@@ -12,6 +12,7 @@ extern StrId dayPhaseTextId(uint8_t phase);
 
 PetCardDailyScreen petCardDailyScreen;
 
+/** Maps a daily-goal category to its localized label string. */
 static StrId dailyGoalLabelId(uint8_t goalType) {
   switch (goalType) {
     case DAILY_GOAL_CARE: return S_GOAL_CARE;
@@ -23,6 +24,7 @@ static StrId dailyGoalLabelId(uint8_t goalType) {
   }
 }
 
+/** Returns the display color associated with a daily-goal category. */
 static uint16_t dailyGoalColor(uint8_t goalType) {
   switch (goalType) {
     case DAILY_GOAL_CARE: return C565(0xd4, 0x52, 0x7e);
@@ -34,6 +36,7 @@ static uint16_t dailyGoalColor(uint8_t goalType) {
   }
 }
 
+/** Draws one daily-goal row with its progress and completion marker. */
 static void drawDailyGoalRow(int y, uint8_t idx) {
   uint8_t type = pet.dailyGoalType[idx];
   uint8_t target = pet.dailyGoalTarget(type);

@@ -10,14 +10,21 @@ private:
   float sackShake = 0;
   uint8_t sackGain = 0;
   bool sackNewHi = false;
+  Screen *returnScreen = nullptr;
+  /** Closes the training screen and returns to its caller. */
+  void close();
 
 public:
-  bool isOpen() const;
-  void open();
+  /** Opens and initializes the strength-training minigame. */
+  void open(Screen *returnTo = nullptr);
+  /** Counts a press as a training hit. */
   void handlePress(int16_t y) override;
 
+  /** Resets the training bag when the screen becomes active. */
   void onEnter() override;
+  /** The training animation requires rendering on every update. */
   bool isStaticClean() const override { return false; }
+  /** Draws the training bag and current score. */
   void render() override;
 };
 

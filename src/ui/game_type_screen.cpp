@@ -12,14 +12,8 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool gameOpen;
-extern uint8_t gameScore, gameMisses;
-extern uint8_t typeEnemy, typeChoice[3], typeCorrect;
-extern uint32_t typeUntil, gameOverUntil;
 
 extern void drawGameScene();
-extern void finishTypeGame();
-extern void nextTypeQuestion();
 extern void flushStampedFrame();
 extern int sceneHour();
 extern const char *battleTypeName(uint8_t type);
@@ -28,11 +22,26 @@ extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
 
 GameTypeScreen gameTypeScreen;
 
+static const uint8_t TYPE_DEF_POOL[] = {
+  TYPE_GRASS, TYPE_FIRE, TYPE_WATER, TYPE_ELECTRIC, TYPE_ROCK, TYPE_GROUND,
+  TYPE_FLYING, TYPE_POISON, TYPE_PSYCHIC, TYPE_GHOST, TYPE_DRAGON, TYPE_ICE
+};
+static const uint8_t TYPE_COUNTER_POOL[] = {
+  TYPE_FIRE, TYPE_WATER, TYPE_GRASS, TYPE_GROUND, TYPE_WATER, TYPE_WATER,
+  TYPE_ELECTRIC, TYPE_PSYCHIC, TYPE_BUG, TYPE_GHOST, TYPE_ICE, TYPE_FIRE
+};
+static const uint8_t TYPE_OPTION_POOL[] = {
+  TYPE_NORMAL, TYPE_FIRE, TYPE_WATER, TYPE_ELECTRIC, TYPE_GRASS, TYPE_ICE,
+  TYPE_FIGHTING, TYPE_POISON, TYPE_GROUND, TYPE_FLYING, TYPE_PSYCHIC, TYPE_BUG,
+  TYPE_ROCK, TYPE_GHOST, TYPE_DRAGON
+};
+
+
 static constexpr int TYPE_CX = 233;
 
 void GameTypeScreen::handleTap(int16_t x, int16_t y) {
   if (gameOverUntil) return;
-  if (y < 72) { gameOpen = false; sfxPlay(SFX_TAP); return; }
+  if (y < 72) { closeGame(); sfxPlay(SFX_TAP); return; }
   int idx = -1;
   for (int i = 0; i < 3; i++) {
     int by = 210 + i * 60;
@@ -42,9 +51,9 @@ void GameTypeScreen::handleTap(int16_t x, int16_t y) {
   if ((uint8_t)idx == typeCorrect) {
     gameScore++;
     sfxPlay(SFX_MINIGAME_OK);
-    nextTypeQuestion();
+    nextQuestion();
   } else {
-    if (++gameMisses >= 3) finishTypeGame();
+    if (++gameMisses >= 3) finishGame();
     else sfxPlay(SFX_MINIGAME_BAD);
   }
 }
@@ -52,16 +61,16 @@ void GameTypeScreen::handleTap(int16_t x, int16_t y) {
 void GameTypeScreen::render() {
   uint32_t now = millis();
   if (gameOverUntil) {
-    drawGameResult(T(S_RECORD_FMT), pet.typeHi, S_ATK_GAIN_FMT);
+    renderResult(T(S_RECORD_FMT), pet.typeHi, S_ATK_GAIN_FMT);
     return;
   }
   if (deadlineReached(now, typeUntil)) {
     if (++gameMisses >= 3) {
-      finishTypeGame();
+      finishGame();
       return;
     }
     sfxPlay(SFX_MINIGAME_BAD);
-    nextTypeQuestion();
+    nextQuestion();
   }
   drawGameScene();
   bool night = sceneHour() < 6 || sceneHour() >= 20;
@@ -108,4 +117,38 @@ void GameTypeScreen::render() {
   gfx->fillRoundRect(TYPE_CX - bw / 2, 392, bw, 14, 5, UI_TRACK);
   if (fw > 2) gfx->fillRoundRect(TYPE_CX - bw / 2, 392, fw, 14, 5, UI_BAR_OK);
   flushStampedFrame();
+}
+
+void GameTypeScreen::nextQuestion() {
+  uint8_t q = (uint8_t)random(sizeof(TYPE_DEF_POOL));
+  typeEnemy = TYPE_DEF_POOL[q];
+  uint8_t correct = TYPE_COUNTER_POOL[q];
+  typeCorrect = (uint8_t)random(3);
+  for (uint8_t i = 0; i < 3; i++) typeChoice[i] = TYPE_NONE;
+  typeChoice[typeCorrect] = correct;
+  for (uint8_t i = 0; i < 3; i++) {
+    if (i == typeCorrect) continue;
+    uint8_t cand;
+    do {
+      cand = TYPE_OPTION_POOL[random(sizeof(TYPE_OPTION_POOL))];
+    } while (cand == correct || cand == typeChoice[0] || cand == typeChoice[1] || cand == typeChoice[2] ||
+             battleTypeEffectPct(cand, typeEnemy, TYPE_NONE) > 100);
+    typeChoice[i] = cand;
+  }
+  typeUntil = millis() + 4200;
+}
+
+void GameTypeScreen::start() {
+  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  resetGame();
+  nextQuestion();
+  setScreen(&gameTypeScreen);
+  sfxPlay(SFX_GAME_START);
+}
+
+void GameTypeScreen::finishGame() {
+  gameNewHi = (gameScore > pet.typeHi);
+  gameGain = pet.applyTypeResult(gameScore);
+  sfxPlay(gameNewHi && gameScore > 0 ? SFX_MEDAL : SFX_LEVEL);
+  showResult();
 }

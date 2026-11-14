@@ -17,6 +17,6 @@ void setScreen(Screen* next) {
     activeScreen->markDirty();
     activeScreen->onEnter();
   } else {
-    markUiDirty(); // Volta para a tela principal do Pokémon
+    markUiDirty(); // Return to the main pet screen.
   }
 }

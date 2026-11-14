@@ -17,19 +17,23 @@ extern void flushStampedFrame();
 
 static constexpr int SACK_CX = 233;
 
+/** Converts 8-bit RGB components to an RGB565 display color. */
 static uint16_t sackColor565(uint8_t r, uint8_t g, uint8_t b) {
   return (uint16_t)((((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)));
 }
 
 StrengthTrainingScreen strengthTrainingScreen;
 
-bool StrengthTrainingScreen::isOpen() const {
-  return activeScreen == this;
+void StrengthTrainingScreen::open(Screen *returnTo) {
+  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
+  returnScreen = returnTo;
+  setScreen(this);
 }
 
-void StrengthTrainingScreen::open() {
-  if (pet.isEgg() || pet.sleeping || pet.ceremony) return;
-  setScreen(this);
+void StrengthTrainingScreen::close() {
+  Screen *target = returnScreen;
+  returnScreen = nullptr;
+  setScreen(target);
 }
 
 void StrengthTrainingScreen::onEnter() {
@@ -44,7 +48,7 @@ void StrengthTrainingScreen::onEnter() {
 void StrengthTrainingScreen::handlePress(int16_t y) {
   lastInteract = millis();
   if (y < 72) {
-    setScreen(nullptr);
+    close();
     return;
   }
   if (deadlineReached(millis(), sackUntil)) return;
@@ -61,7 +65,7 @@ void StrengthTrainingScreen::render() {
 
   if (sackOverUntil) {
     if (deadlineReached(now, sackOverUntil)) {
-      setScreen(nullptr);
+      close();
       return;
     }
     char b[20];

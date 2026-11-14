@@ -16,11 +16,9 @@
 
 extern Arduino_Canvas *gfx;
 extern uint8_t cardPage;
-extern bool cardOpen;
 extern bool cardDirty;
 extern bool expeditionTrainChoiceOpen;
 extern void flushStampedFrame();
-extern void markUiDirty();
 extern void lockTouchBrief(uint16_t ms = 160);
 
 PetCardPageScreen *petCardScreenForPage(uint8_t page) {
@@ -33,7 +31,8 @@ PetCardPageScreen *petCardScreenForPage(uint8_t page) {
     case 5: return &petCardMedalsScreen;
     case 6: return &petCardProgressScreen;
     case 7: return &petCardExpeditionScreen;
-    default: return &petCardStepsScreen;
+    case 8: return &petCardStepsScreen;
+    default: return &petCardProfileScreen;
   }
 }
 
@@ -57,16 +56,10 @@ void PetCardPageScreen::render() {
 void PetCardPageScreen::handleTap(int16_t x, int16_t y) {
   handlePageTap(x, y);
   if (activeScreen != this) return;
-  if (!cardOpen) {
-    setScreen(nullptr);
-    return;
-  }
   if (y >= 400) {
-    cardOpen = false;
-    markUiDirty();
+    setScreen(nullptr);
     lockTouchBrief();
     sfxPlay(SFX_TAP);
-    setScreen(nullptr);
   }
 }
 
@@ -84,12 +77,10 @@ void PetCardPageScreen::handleSwipe(int dir) {
 
 void PetCardPageScreen::handleSwipeV(int dir) {
   if (dir < 0) {
-    cardOpen = false;
     expeditionTrainChoiceOpen = false;
-    markUiDirty();
+    setScreen(nullptr);
     lockTouchBrief();
     sfxPlay(SFX_TAP);
-    setScreen(nullptr);
   }
 }
 
