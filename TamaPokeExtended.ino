@@ -50,6 +50,7 @@
 #include "src/ui/clock_screen.h"
 #include "src/ui/keyboard_screen.h"
 #include "src/ui/help_screen.h"
+#include "src/ui/starter_screen.h"
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
@@ -118,7 +119,6 @@ bool helpDirty = true;
 bool keyboardDirty = true;
 bool gameMenuDirty = true;
 bool battleDirty = true;
-bool starterDirty = true;
 
 int8_t watermarkDrawnSlot = -1;
 
@@ -263,19 +263,6 @@ static const uint8_t CRACK2[][2] = { {11,13},{12,14},{11,15},{20,12},{19,13},{20
 static const uint16_t STARS[][2] = { {120,140},{330,120},{370,210},{95,230},{280,90},{160,95} };
 
 bool wasPressed = false;
-// eleccion de inicial (primera partida): primero region, despues 3 starters.
-static const int16_t STARTER_DEX[3][3] = {
-  { 1, 4, 7 },       // Kanto
-  { 47, 50, 53 }, // Johto
-  { 69, 72, 75 }, // Hoenn
-};
-static const StrId STARTER_REGION_LABELS[3] = {
-  S_RANK_KANTO, S_RANK_JOHTO, S_RANK_HOENN
-};
-uint8_t starterRegion = 0xFF;  // se elige en cada arranque si el starter sigue pendiente
-#define STARTER_ROW_Y 110
-#define STARTER_ROW_H 70
-#define STARTER_ROW_GAP 8
 // boton-CTA de evolucion (centrado, mitad de pantalla)
 #define EVO_BTN_W 256
 #define EVO_BTN_H 64
@@ -310,7 +297,6 @@ bool holdFired = false;
 
 void markUiDirty() {
   uiDirty = true;
-  starterDirty = true;
   cardDirty = true;
   clockDirty = true;
   helpDirty = true;
@@ -343,7 +329,6 @@ const char *screenName() {
 
 bool staticScreenClean() {
   if (watermarkNeedsRedraw()) return false;
-  if (pet.awaitingStarter()) return !starterDirty;
   if (battleOpen && battleResolved) return !battleDirty;
   if (kbOpen) return !keyboardDirty;
   if (helpOpen) return !helpDirty;
@@ -397,6 +382,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(TP_INT), touchIsr, FALLING);
 
   pet.begin();
+  if (pet.awaitingStarter()) setScreen(&starterScreen);
   Serial.printf("SAVE %s spec=%d lv=%u wins=%u losses=%u streak=%u\n",
                 pet.saveLoadedFromNvs ? "loaded" : "created",
                 pet.speciesId, pet.level(), pet.battleWins, pet.battleLosses, pet.battleStreak);
@@ -1179,33 +1165,6 @@ static bool isMinigameScreen(const Screen *screen) {
 
 void onTap(int16_t x, int16_t y) {
   // Serial.printf("TOUCH %d %d\n", x, y);  // diagnostico (silenciado: satura el log)
-  if (pet.awaitingStarter()) {  // primera partida: region y despues inicial
-    if (starterRegion == 0xFF) {
-      for (uint8_t i = 0; i < 3; i++) {
-        int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-        if (x >= 70 && x <= 396 && y >= ry && y <= ry + STARTER_ROW_H) {
-          starterRegion = i;
-          starterDirty = true;
-          lockTouchBrief();
-          sfxPlay(SFX_TAP);
-          break;
-        }
-      }
-      return;
-    }
-    for (int i = 0; i < 3; i++) {
-      int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-      if (x >= 70 && x <= 396 && y >= ry && y <= ry + STARTER_ROW_H) {
-        pet.chooseStarter(STARTER_DEX[starterRegion][i]);
-        starterRegion = 0xFF;
-        markUiDirty();
-        lockTouchBrief();
-        sfxPlay(SFX_TAP);
-        break;
-      }
-    }
-    return;
-  }
   if (activeScreen) {
     Screen *tappedScreen = activeScreen;
     activeScreen->handleTap(x, y);
@@ -1548,57 +1507,8 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
   }
 }
 
-// primera partida: elige inicial entre Bulbasaur / Charmander / Squirtle
-void renderStarterRegionSelect() {
-  if (!starterDirty) { perfRenderSkipCount++; return; }
-  starterDirty = false;
-  gfx->fillScreen(UI_BG_DAY);
-  const char *t = T(S_CHOOSE_REGION);
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - strlen(t) * 6, 68);
-  gfx->print(t);
-  for (uint8_t i = 0; i < 3; i++) {
-    int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-    gfx->fillRoundRect(70, ry, 326, STARTER_ROW_H, 14, lerp565(UI_BAR_OK, UI_WHITE, 6, 8));
-    gfx->drawRoundRect(70, ry, 326, STARTER_ROW_H, 14, UI_BAR_OK);
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(3);
-    const char *label = T(STARTER_REGION_LABELS[i]);
-    gfx->setCursor(CX - strlen(label) * 9, ry + 24);
-    gfx->print(label);
-  }
-  flushStampedFrame();
-}
-
-void renderStarterSelect() {
-  if (!starterDirty) { perfRenderSkipCount++; return; }
-  starterDirty = false;
-  gfx->fillScreen(UI_BG_DAY);
-  const char *t = T(S_CHOOSE_STARTER);
-  gfx->setTextColor(UI_INK);
-  gfx->setTextSize(2);
-  gfx->setCursor(CX - strlen(t) * 6, 68);
-  gfx->print(t);
-  for (int i = 0; i < 3; i++) {
-    int16_t d = STARTER_DEX[starterRegion][i];
-    const DexEntry &de = DEX_TBL[d];
-    int ry = STARTER_ROW_Y + i * (STARTER_ROW_H + STARTER_ROW_GAP);
-    gfx->fillRoundRect(70, ry, 326, STARTER_ROW_H, 14, lerp565(de.accent, UI_WHITE, 6, 8));
-    gfx->drawRoundRect(70, ry, 326, STARTER_ROW_H, 14, de.accent);
-    const uint8_t *th = thumbs.get(d);     // miniatura del inicial (si la SD esta lista)
-    if (th) drawThumb(th, 76, ry - 5, 3, false);
-    gfx->setTextColor(UI_INK);
-    gfx->setTextSize(3);
-    gfx->setCursor(178, ry + 24);
-    gfx->print(dexName(d));
-  }
-  flushStampedFrame();
-}
-
 void render() {
   if (watermarkNeedsRedraw()) {
-    starterDirty = true;
     cardDirty = true;
     clockDirty = true;
     helpDirty = true;
@@ -1608,11 +1518,6 @@ void render() {
     if (activeScreen) activeScreen->markDirty();
   }
   if (staticScreenClean()) { perfRenderSkipCount++; return; }
-  if (pet.awaitingStarter()) {  // primera partida: region y starter (prioridad total)
-    if (starterRegion == 0xFF) renderStarterRegionSelect();
-    else renderStarterSelect();
-    return;
-  }
   if (activeScreen) {
     Screen *renderingScreen = activeScreen;
     renderingScreen->render();
