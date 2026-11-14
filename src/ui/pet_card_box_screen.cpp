@@ -70,7 +70,7 @@ const char *PetCardBoxScreen::sortLabel() const {
   return T(S_SORT_DEX);
 }
 
-void PetCardBoxScreen::render() {
+void PetCardBoxScreen::renderPage() {
   uint8_t pages = pageCount();
   if (page >= pages) page = pages - 1;
 

@@ -10,7 +10,7 @@ extern Pet pet;
 
 PetCardProgressScreen petCardProgressScreen;
 
-void PetCardProgressScreen::render() {
+void PetCardProgressScreen::renderPage() {
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(PET_CARD_CX - strlen(T(S_PROGRESS)) * 9, 44);

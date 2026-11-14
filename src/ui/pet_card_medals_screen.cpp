@@ -20,7 +20,7 @@ void drawMedalBadge(int x, int y, int i) {
   gfx->print(medalLabel(i));
 }
 
-void PetCardMedalsScreen::render() {
+void PetCardMedalsScreen::renderPage() {
   int got = 0;
   for (int i = 0; i < MED_COUNT; i++)
     if (pet.hasMedal(1 << i)) got++;

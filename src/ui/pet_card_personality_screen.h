@@ -3,7 +3,7 @@
 
 class PetCardPersonalityScreen : public PetCardPageScreen {
 public:
-  void render() override;
+  void renderPage() override;
 };
 
 extern PetCardPersonalityScreen petCardPersonalityScreen;

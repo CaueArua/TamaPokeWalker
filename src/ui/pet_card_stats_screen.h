@@ -3,7 +3,7 @@
 
 class PetCardStatsScreen : public PetCardPageScreen {
 public:
-  void render() override;
+  void renderPage() override;
 
 protected:
   void handlePageTap(int16_t x, int16_t y) override;

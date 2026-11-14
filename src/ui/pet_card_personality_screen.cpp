@@ -55,7 +55,7 @@ static void drawPersonalityRecord(int x, int y, const char *label, uint16_t val,
   gfx->print(num);
 }
 
-void PetCardPersonalityScreen::render() {
+void PetCardPersonalityScreen::renderPage() {
   PetPersonality pers = pet.personality();
   const char *title = T(S_PERSONALITY);
   const char *name = T(personalityNameId(pers));

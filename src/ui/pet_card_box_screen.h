@@ -13,7 +13,7 @@ class PetCardBoxScreen : public PetCardPageScreen {
   const char *sortLabel() const;
 
 public:
-  void render() override;
+  void renderPage() override;
 
 protected:
   void handlePageTap(int16_t x, int16_t y) override;

@@ -14,7 +14,7 @@ private:
 public:
   bool isOpen() const;
   void open();
-  void handlePress(int16_t y);
+  void handlePress(int16_t y) override;
 
   void onEnter() override;
   bool isStaticClean() const override { return false; }

@@ -15,6 +15,7 @@ public:
 
   // Eventos de toque e deslize
   virtual void handleTap(int16_t x, int16_t y) {}
+  virtual void handlePress(int16_t y) {}
   virtual uint32_t longPressDelayMs() const { return 700; } // Tempo padrão (customizável por tela)
   virtual void handleLongPress(int16_t x, int16_t y, uint32_t durationMs) {}
   virtual void handleSwipe(int dir) {}    // -1 = Esquerda, +1 = Direita

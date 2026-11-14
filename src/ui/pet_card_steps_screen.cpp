@@ -16,7 +16,7 @@ static StrId stepRewardTextId(uint8_t index) {
   return S_ITEM_TRAIN;
 }
 
-void PetCardStepsScreen::render() {
+void PetCardStepsScreen::renderPage() {
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(PET_CARD_CX - strlen(T(S_STEPS)) * 9, 44);

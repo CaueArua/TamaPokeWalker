@@ -59,7 +59,7 @@ static void drawDailyGoalRow(int y, uint8_t idx) {
   }
 }
 
-void PetCardDailyScreen::render() {
+void PetCardDailyScreen::renderPage() {
   pet.ensureDailyGoals();
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);

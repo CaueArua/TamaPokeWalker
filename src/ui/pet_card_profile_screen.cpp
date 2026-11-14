@@ -81,7 +81,7 @@ static bool inProfilePetPortrait(int16_t x, int16_t y) {
   return dx * dx + dy * dy <= 76 * 76;
 }
 
-void PetCardProfileScreen::render() {
+void PetCardProfileScreen::renderPage() {
   const DexEntry &d = DEX_TBL[pet.speciesId];
   const char *nm = pet.nick[0] ? pet.nick : dexName(pet.speciesId);
   char head[26];

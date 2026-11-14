@@ -16,7 +16,7 @@ extern StrengthTrainingScreen strengthTrainingScreen;
 
 PetCardStatsScreen petCardStatsScreen;
 
-void PetCardStatsScreen::render() {
+void PetCardStatsScreen::renderPage() {
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(PET_CARD_CX - strlen(T(S_BATTLE)) * 9, 48);

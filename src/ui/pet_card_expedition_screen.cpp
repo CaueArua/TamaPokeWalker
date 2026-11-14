@@ -82,7 +82,7 @@ static void renderExpeditionTrainChoice() {
   gfx->print(T(S_BACK));
 }
 
-void PetCardExpeditionScreen::render() {
+void PetCardExpeditionScreen::renderPage() {
   uint32_t nowEpoch = expeditionNowEpoch();
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
