@@ -5,18 +5,19 @@
 #include "../../pet.h"
 #include "../../i18n.h"
 #include "../../audio.h"
+#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern bool cardDirty;
-extern bool expeditionTrainChoiceOpen;
 extern uint32_t expeditionNowEpoch();
 extern StrId expeditionItemText(ExpeditionItem item);
 extern StrId expeditionSiteText(ExpeditionSite site);
 extern uint16_t expeditionSiteColor(ExpeditionSite site);
 extern uint16_t expeditionItemColor(ExpeditionItem item);
 extern void markUiDirty();
-extern void lockTouchBrief(uint16_t ms = 160);
+
+bool expeditionTrainChoiceOpen = false;
 
 PetCardExpeditionScreen petCardExpeditionScreen;
 

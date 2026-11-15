@@ -6,6 +6,7 @@
 #include "../../audio.h"
 #include "../../i18n.h"
 #include "dex_screen.h"
+#include "render_utils.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -14,9 +15,6 @@ extern const char *dexName(int16_t dex);
 extern void typeText(char *buf, size_t cap, const DexEntry &d);
 extern uint16_t battleTypeColor(uint8_t t);
 extern void flushStampedFrame();
-extern void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY,
-                        uint32_t t, bool loop, bool sil, uint8_t maxS);
-
 static constexpr uint16_t P_EMPTY = 0xE73D;
 static constexpr uint16_t P_RED   = 0xD249;
 static constexpr int P_CX = 233;

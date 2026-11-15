@@ -20,6 +20,7 @@
 #include "dex_screen.h"
 #include "battle_screen.h"
 #include "party_screen.h"
+#include "clock_screen.h"
 #include "game_ball_screen.h"
 #include "game_catch_screen.h"
 #include "game_clean_screen.h"
@@ -28,26 +29,43 @@
 #include "pet_card_page.h"
 #include "screen.h"
 #include "strength_screen.h"
+#include "render_utils.h"
+#include "touch_controller.h"
+#include "power_manager.h"
+
+bool gameMenuDirty = true;
+bool gameMenuOpen = false;
+uint32_t bathUntil = 0;
+bool bathPending = false;
+BathBubble bubbles[14];
+uint32_t feedMenuUntil = 0;
+uint32_t confirmUntil = 0;
+uint8_t choiceKind = 0;
+uint32_t choiceUntil = 0;
+uint32_t wildPromptUntil = 0;
+uint32_t nextWildEligible = 0;
+uint32_t lastWildCheck = 0;
+int16_t wildPromptDex = 0;
+uint8_t wildPromptLevel = 1;
+bool wildPromptShiny = false;
+uint32_t petEventUntil = 0;
+uint32_t nextPetEventEligible = 0;
+uint32_t lastPetEventCheck = 0;
+uint8_t petEventType = PET_EVENT_BERRY;
+uint32_t petEventFeedbackUntil = 0;
+char petEventMsg[18] = "";
+uint32_t morningUntil = 0;
+uint32_t eggWiggleUntil = 0;
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern PmdMon evoPmd;
-extern bool gNight;
-extern uint32_t eggWiggleUntil;
-extern uint32_t morningUntil;
-extern uint32_t wildPromptUntil;
-extern uint32_t feedMenuUntil;
-extern uint32_t confirmUntil;
-extern uint32_t choiceUntil;
-extern uint8_t choiceKind;
-extern bool gameMenuOpen;
 
 extern int sceneHour();
 extern uint16_t inkColor();
 extern void drawScene(uint8_t biome, uint32_t now, bool night);
 extern void drawHeader(const char *name, uint16_t nameColor, const char *msg);
 extern void drawCeremony();
-extern void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette);
 extern void drawPet();
 extern void drawBath();
 extern void drawPoops();
@@ -60,9 +78,6 @@ extern void flushStampedFrame();
 extern const char *dexName(int16_t dex);
 static void behNext();
 extern void markUiDirty();
-extern void lockTouchBrief(uint16_t ms = 160);
-extern void openClock(Screen *returnTo);
-extern bool inPetZone(int16_t x, int16_t y);
 extern int8_t gameMenuHit(int16_t x, int16_t y);
 extern void startGameMenuChoice(uint8_t idx);
 
@@ -72,22 +87,9 @@ static constexpr uint16_t INK_K = 0x18C4;
 static const uint8_t CRACK1[][2] = { {15,8},{16,9},{15,10} };
 static const uint8_t CRACK2[][2] = { {11,13},{12,14},{11,15},{20,12},{19,13},{20,14} };
 
-extern bool screenOff;
 extern bool cardDirty;
 extern uint8_t cardPage;
 extern bool expeditionTrainChoiceOpen;
-extern uint32_t bathUntil;
-extern uint32_t nextWildEligible;
-extern uint32_t lastWildCheck;
-extern uint32_t nextPetEventEligible;
-extern uint32_t lastPetEventCheck;
-extern uint32_t petEventUntil;
-extern uint32_t petEventFeedbackUntil;
-extern uint8_t petEventType;
-extern char petEventMsg[18];
-extern int16_t wildPromptDex;
-extern uint8_t wildPromptLevel;
-extern bool wildPromptShiny;
 extern const char *medalName(int index);
 extern uint8_t currentDayPhase();
 #define WILD_COOLDOWN_MS (20UL * 60UL * 1000UL)
@@ -102,6 +104,18 @@ static void scheduleNextPetEvent(uint32_t now);
 static bool mainScreenReadyForPetEvent();
 static void maybeOfferPetEvent(uint32_t now);
 static void maybeOfferMorning(uint32_t now);
+
+/**
+ * Maps one of the nine built-in species to its sprite-table index.
+ *
+ * @param dex National Dex species identifier.
+ * @return The built-in sprite index, or -1 when no built-in sprite exists.
+ */
+static int flashIdxForDex(int16_t dex) {
+  static const int8_t IDX[10] = { -1, 3, 4, 5, 0, 1, 2, 6, 7, 8 };
+  return (dex >= 1 && dex <= 9) ? IDX[dex] : -1;
+}
+
 static void drawWildPrompt();
 static void drawPetEvent();
 static void drawStreakBadge();
@@ -352,8 +366,6 @@ void MainScreen::updateExpedition(uint32_t now) {
   expeditionWasActive = expeditionActiveNow;
 }
 
-extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
-extern uint32_t pmdActTotalMs(const PmdAct &a);
 extern bool bathPending;
 extern bool gameMenuDirty;
 extern uint8_t currentDayPhase();
@@ -552,10 +564,6 @@ extern SdMon mon;
 extern PmdMon pmd;
 extern PmdMon evoPmd;
 extern PetBehavior beh;
-extern uint32_t pmdActTotalMs(const PmdAct &a);
-extern int flashIdxForDex(int16_t dex);
-extern void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t, bool loop, bool sil, uint8_t maxS);
-extern void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY, uint32_t t, bool loop, bool sil, uint8_t maxS);
 extern void overlayEye(const Species &sp, int x, int y, int s, int col);
 extern void overlayMouth(const Species &sp, int x, int y, int s, bool open);
 static constexpr int PET_GROUND = 304;
@@ -928,7 +936,7 @@ void MainScreen::handleSwipe(int dir) {
 void MainScreen::handleSwipeV(int dir) {
   if (pet.ceremony) return;
   if (dir > 0) {
-    if (!confirmUntil && !feedMenuUntil) openClock(nullptr);
+    if (!confirmUntil && !feedMenuUntil) clockSettingsScreen.open(nullptr);
   } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
     cardPage = 0;
     cardDirty = true;

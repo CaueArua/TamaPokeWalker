@@ -3,6 +3,8 @@
 
 class HelpScreen : public Screen {
 public:
+  /** Resets and activates the help screen. */
+  void open();
   /** Draws the current help page. */
   void render() override;
   /** Handles taps on help controls and links. */
@@ -18,5 +20,7 @@ public:
 };
 
 extern HelpScreen helpScreen;
+extern uint8_t helpPage;
+extern bool helpDirty;
 /** Returns the localized label for the selected language. */
 const char *helpLabelForLanguage(uint8_t lang);

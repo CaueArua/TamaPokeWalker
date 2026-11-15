@@ -1,48 +1,13 @@
-In file included from C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp:1:
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.h:14:3: error: 'BattleReward' does not name a type; did you mean 'BattleResult'?
-   14 |   BattleReward battleReward = {};
-      |   ^~~~~~~~~~~~
-      |   BattleResult
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp: In member function 'void BattleScreen::battleRewardText(char*, size_t) const':
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp:57:7: error: 'battleReward' was not declared in this scope; did you mean 'BattleReward'?
-   57 |   if (battleReward.amount == 0) { buf[0] = 0; return; }
-      |       ^~~~~~~~~~~~
-      |       BattleReward
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp:59:7: error: 'battleReward' was not declared in this scope; did you mean 'BattleReward'?
-   59 |   if (battleReward.stat == BATTLE_REWARD_ATK) fmt = S_ATK_GAIN_FMT;
-      |       ^~~~~~~~~~~~
-      |       BattleReward
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp:61:30: error: 'battleReward' was not declared in this scope; did you mean 'BattleReward'?
-   61 |   snprintf(buf, len, T(fmt), battleReward.amount);
-      |                              ^~~~~~~~~~~~
-      |                              BattleReward
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp: In member function 'void BattleScreen::start(int16_t, uint8_t, int8_t)':
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp:362:3: error: 'battleReward' was not declared in this scope; did you mean 'BattleReward'?
-  362 |   battleReward = {};
-      |   ^~~~~~~~~~~~
-      |   BattleReward
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp: In member function 'void BattleScreen::finishBattle()':
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp:389:5: error: 'battleReward' was not declared in this scope; did you mean 'BattleReward'?
-  389 |     battleReward = pet.applyBattleWin(battleDex, closeWin);
-      |     ^~~~~~~~~~~~
-      |     BattleReward
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\battle_screen.cpp:395:5: error: 'battleReward' was not declared in this scope; did you mean 'BattleReward'?
-  395 |     battleReward = {};
-      |     ^~~~~~~~~~~~
-      |     BattleReward
-In file included from C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\game_type_screen.cpp:1:
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\game_type_screen.h:6:23: error: 'TYPE_GRASS' was not declared in this scope
-    6 |   uint8_t typeEnemy = TYPE_GRASS;
-      |                       ^~~~~~~~~~
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\game_type_screen.h:7:29: error: 'TYPE_FIRE' was not declared in this scope
-    7 |   uint8_t typeChoice[3] = { TYPE_FIRE, TYPE_WATER, TYPE_GRASS };
-      |                             ^~~~~~~~~
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\game_type_screen.h:7:40: error: 'TYPE_WATER' was not declared in this scope
-    7 |   uint8_t typeChoice[3] = { TYPE_FIRE, TYPE_WATER, TYPE_GRASS };
-      |                                        ^~~~~~~~~~
-C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\game_type_screen.h:7:52: error: 'TYPE_GRASS' was not declared in this scope
-    7 |   uint8_t typeChoice[3] = { TYPE_FIRE, TYPE_WATER, TYPE_GRASS };
-      |                                                    ^~~~~~~~~~
+C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\scene_renderer.cpp: In function 'int sceneHour()':
+C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\scene_renderer.cpp:114:29: error: 'pet' was not declared in this scope; did you mean 'Pet'?
+  114 |   return sceneHourFromEpoch(pet.lastSeenEpoch);
+      |                             ^~~
+      |                             Pet
+C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\scene_renderer.cpp: In function 'void drawGameScene()':
+C:\Users\cauea\Documents\projetos\TamaPokeExtended\src\ui\scene_renderer.cpp:166:17: error: 'pet' was not declared in this scope; did you mean 'Pet'?
+  166 |   uint8_t bio = pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome;
+      |                 ^~~
+      |                 Pet
 exit status 1
 
-Compilation error: 'BattleReward' does not name a type; did you mean 'BattleResult'?
+Compilation error: 'pet' was not declared in this scope; did you mean 'Pet'?

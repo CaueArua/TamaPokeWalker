@@ -15,3 +15,4 @@ protected:
 };
 
 extern PetCardExpeditionScreen petCardExpeditionScreen;
+extern bool expeditionTrainChoiceOpen;

@@ -7,6 +7,7 @@
 #include "../../i18n.h"
 #include "../../audio.h"
 #include "dex_screen.h"
+#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -16,7 +17,6 @@ extern void typeText(char *buf, size_t cap, const DexEntry &d);
 extern uint16_t battleTypeColor(uint8_t t);
 extern void setScreen(Screen *next);
 extern void markUiDirty();
-extern void lockTouchBrief(uint16_t ms = 160);
 extern DexScreen dexScreen;
 
 PetCardBoxScreen petCardBoxScreen;

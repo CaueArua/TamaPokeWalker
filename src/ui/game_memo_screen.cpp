@@ -8,6 +8,7 @@
 #include "../../species.h"
 #include "../../time_utils.h"
 #include "game_screen_common.h"
+#include "render_utils.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -15,8 +16,6 @@ extern Pet pet;
 extern void drawGameScene();
 extern void flushStampedFrame();
 extern int sceneHour();
-extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
-
 GameMemoScreen gameMemoScreen;
 
 static constexpr int MEMO_CX = 233;

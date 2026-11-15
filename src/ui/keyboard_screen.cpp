@@ -8,10 +8,11 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool keyboardDirty;
-extern char nameBuf[12];
-extern uint8_t nameLen;
 extern void flushStampedFrame();
+
+char nameBuf[12] = "";
+uint8_t nameLen = 0;
+bool keyboardDirty = true;
 
 KeyboardScreen keyboardScreen;
 static constexpr int SCREEN_CX = 233;
@@ -21,6 +22,16 @@ static const char KB_KEYS[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-";  // 28 + DEL + OK 
 #define KB_Y 150
 #define KB_W 64
 #define KB_H 52
+
+void KeyboardScreen::open(Screen *returnTo) {
+  keyboardDirty = true;
+  this->returnScreen = returnTo;
+  setScreen(this);
+  strncpy(nameBuf, pet.nick, sizeof(nameBuf) - 1);
+  nameBuf[sizeof(nameBuf) - 1] = 0;
+  nameLen = strlen(nameBuf);
+  sfxPlay(SFX_MENU);
+}
 
 void KeyboardScreen::render() {
   keyboardDirty = false;

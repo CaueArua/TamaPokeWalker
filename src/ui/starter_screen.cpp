@@ -7,13 +7,12 @@
 #include "../../pet.h"
 #include "../../sdmon.h"
 #include "../../species.h"
+#include "render_utils.h"
+#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern void flushStampedFrame();
-extern void lockTouchBrief(uint16_t ms = 160);
-extern void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);
-extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
 extern const char *dexName(int16_t dex);
 
 static constexpr int16_t STARTER_DEX[3][3] = {

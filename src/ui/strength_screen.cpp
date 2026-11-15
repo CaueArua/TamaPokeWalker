@@ -7,10 +7,10 @@
 #include "../../i18n.h"
 #include "../../species.h"
 #include "../../time_utils.h"
+#include "power_manager.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern uint32_t lastInteract;
 extern int sceneHour();
 extern void drawGameScene();
 extern void flushStampedFrame();

@@ -10,6 +10,7 @@
 #include "../../species.h"
 #include "../../time_utils.h"
 #include "game_screen_common.h"
+#include "render_utils.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -19,10 +20,6 @@ extern SdMon mon;
 extern void drawGameScene();
 extern int sceneHour();
 extern void flushStampedFrame();
-extern void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette);
-extern void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t,
-                       bool loop, bool sil, uint8_t maxS);
-
 GameBallScreen gameBallScreen;
 
 static constexpr int BALL_CX = 233;

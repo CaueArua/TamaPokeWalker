@@ -9,14 +9,21 @@
 #define HELP_LINE_COUNT 6
 
 extern Arduino_Canvas *gfx;
-extern uint8_t helpPage;
-extern bool helpDirty;
-extern void openClock(Screen *returnTo);
 extern void flushStampedFrame();
+
+uint8_t helpPage = 0;
+bool helpDirty = true;
 
 HelpScreen helpScreen;
 static constexpr int SCREEN_CX = 233;
 static const char *const HELP_WORD[LANG_COUNT] = { "AYUDA", "HELP", "AIDE", "HILFE", "AIUTO", "AJUDA" };
+
+void HelpScreen::open() {
+  helpPage = 0;
+  helpDirty = true;
+  setScreen(this);
+  sfxPlay(SFX_MENU);
+}
 static const char *const HELP_OK[LANG_COUNT] = { "OK", "OK", "OK", "OK", "OK", "OK" };
 
 static const char *const HELP_TITLES[LANG_COUNT][HELP_PAGE_COUNT] = {
@@ -161,7 +168,7 @@ void HelpScreen::handleTap(int16_t x, int16_t y) {
       return;
     }
     if (x >= 154 && x <= 312) {
-      openClock(this);
+      clockSettingsScreen.open(this);
       return;
     }
   }
@@ -181,7 +188,7 @@ void HelpScreen::handleSwipe(int dir) {
 
 void HelpScreen::handleSwipeV(int dir) {
   if (dir > 0) {
-    openClock(this);
+    clockSettingsScreen.open(this);
   } else {
     setScreen(nullptr);
     sfxPlay(SFX_TAP);

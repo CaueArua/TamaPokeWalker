@@ -7,22 +7,31 @@
 #include "../../i18n.h"
 #include "../../audio.h"
 #include "help_screen.h"
+#include "power_manager.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern PmdMon pmd;
 extern SdMon mon;
-extern bool clockDirty;
-extern bool powerSave;
-extern int clockH;
-extern int clockM;
-extern void setPowerSave(bool on);
-extern void openHelp();
 extern void flushStampedFrame();
 extern const char *firmwareVersion();
 
+int clockH = 12;
+int clockM = 0;
+bool clockDirty = true;
+
 ClockSettingsScreen clockSettingsScreen;
 static constexpr int SCREEN_CX = 233;
+
+void ClockSettingsScreen::open(Screen *returnTo) {
+  uint32_t e = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
+  clockH = (e / 3600) % 24;
+  clockM = (e / 60) % 60;
+  clockDirty = true;
+  this->returnScreen = returnTo;
+  setScreen(this);
+  sfxPlay(SFX_MENU);
+}
 
 void ClockSettingsScreen::applyTime() {
   uint32_t base = pet.lastSeenEpoch ? pet.lastSeenEpoch : rtcEpoch();
@@ -209,7 +218,7 @@ void ClockSettingsScreen::handleTap(int16_t x, int16_t y) {
       return;
     }
   }
-  if (y >= 404 && y <= 444 && x >= 96 && x <= 206) { openHelp(); return; }
+  if (y >= 404 && y <= 444 && x >= 96 && x <= 206) { helpScreen.open(); return; }
   if (y >= 404 && y <= 444 && x >= 230 && x <= 386) { applyTime(); return; }
 }
 

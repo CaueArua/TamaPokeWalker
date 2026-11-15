@@ -5,6 +5,8 @@
 #include "../../dex.h"
 #include "../../audio.h"
 #include "../../i18n.h"
+#include "render_utils.h"
+#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -13,10 +15,6 @@ extern const char *dexName(int16_t dex);
 extern void typeText(char *buf, size_t cap, const DexEntry &d);
 extern uint16_t battleTypeColor(uint8_t t);
 extern void flushStampedFrame();
-extern void lockTouchBrief(uint16_t ms = 160);
-extern void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY,
-                        uint32_t t, bool loop, bool sil, uint8_t maxS);
-
 static constexpr int DEX_CX = 233;
 static constexpr int GAL_X = 73;
 static constexpr int GAL_Y = 116;

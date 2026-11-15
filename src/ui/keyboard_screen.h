@@ -5,8 +5,8 @@ class KeyboardScreen : public Screen {
   Screen *returnScreen = nullptr;
 
 public:
-  /** Sets the screen to return to after the name is saved. */
-  void setReturnScreen(Screen *screen) { returnScreen = screen; }
+  /** Initializes the rename buffer and activates the keyboard screen. */
+  void open(Screen *returnTo);
   /** Draws the rename keyboard and current text buffer. */
   void render() override;
   /** Handles keyboard key presses and rename controls. */
@@ -18,3 +18,6 @@ public:
 };
 
 extern KeyboardScreen keyboardScreen;
+extern char nameBuf[12];
+extern uint8_t nameLen;
+extern bool keyboardDirty;

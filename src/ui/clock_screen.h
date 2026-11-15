@@ -8,8 +8,8 @@ class ClockSettingsScreen : public Screen {
   void closeSettings();
 
 public:
-  /** Sets the screen to return to when the settings screen closes. */
-  void setReturnScreen(Screen *screen) { returnScreen = screen; }
+  /** Initializes and activates the clock settings screen. */
+  void open(Screen *returnTo);
   /** Draws the clock and language settings. */
   void render() override;
   /** Handles taps on the clock and language controls. */
@@ -27,3 +27,6 @@ private:
 };
 
 extern ClockSettingsScreen clockSettingsScreen;
+extern int clockH;
+extern int clockM;
+extern bool clockDirty;

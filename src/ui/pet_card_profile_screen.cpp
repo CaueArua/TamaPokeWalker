@@ -7,17 +7,16 @@
 #include "../../dex.h"
 #include "../../i18n.h"
 #include "../../audio.h"
+#include "render_utils.h"
+#include "touch_controller.h"
+#include "keyboard_screen.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern PmdMon pmd;
 extern bool cardDirty;
 extern const char *dexName(int16_t dex);
-extern void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t,
-                       bool loop, bool sil, uint8_t maxS);
 extern void speciesChirpPlay(int16_t dex, bool forced);
-extern void openKeyboard(Screen *returnTo);
-extern void lockTouchBrief(uint16_t ms = 160);
 
 PetCardProfileScreen petCardProfileScreen;
 
@@ -172,7 +171,7 @@ void PetCardProfileScreen::handlePageTap(int16_t x, int16_t y) {
     return;
   }
   if (y < 84) {
-    openKeyboard(this);
+    keyboardScreen.open(this);
     return;
   }
   if (y >= 366 && y <= 398) {

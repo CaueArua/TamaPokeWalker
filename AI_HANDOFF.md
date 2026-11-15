@@ -8,7 +8,7 @@ Dieses Repository ist eine stark erweiterte, community-orientierte Firmware für
 das Waveshare ESP32-S3 Touch AMOLED 1.75. Es ist ein Fork von
 `socquique/TamaPoke` und wird als "Expanded"-Variante gepflegt.
 
-- Firmware-Entry-Point: `TamaPoke.ino`
+- Firmware-Entry-Point: `TamaPokeExtended.ino`
 - Ausgangs-Firmware-Stand: `1.32.1-caught-mark`
 - Lokaler Testbuild: `1.36.2-hoenn-walk-local` (über `TAMAPOKE_LOCAL_TEST`;
   Hoenn-Expeditionen mit Schrittzielen, siehe `HOENN_WALK_LOCAL.md`)
@@ -24,6 +24,23 @@ das Waveshare ESP32-S3 Touch AMOLED 1.75. Es ist ein Fork von
 Die Firmware speichert den Spielstand in ESP32-NVS. Bei einem Update darf der
 Installer **nicht** mit `Erase device` ausgeführt werden, sonst wird der Save
 gelöscht.
+
+## Firmware-Module
+
+- `TamaPokeExtended.ino` enthält den Arduino-Einstieg (`setup()`/`loop()`).
+  `src/hardware_setup.cpp`, `src/sensor_setup.cpp` und
+  `src/program_setup.cpp` kapseln Hardware-, Sensor- und Programmstart.
+- `src/app_controller.*` führt die periodischen Pet-, Sensor-, Energie- und
+  Render-Updates aus.
+- `src/serial_console.*` verarbeitet serielle Befehle, Save-Backups und
+  Diagnosen.
+- `src/ui/screen_controller.*`, `touch_controller.*` und `power_manager.*`
+  kapseln Screen-Routing, Touch-Gesten und Energieverwaltung.
+- `src/ui/render_utils.*` und `scene_renderer.*` enthalten gemeinsam genutzte
+  Zeichen- und Szenenfunktionen; einzelne Bildschirme liegen in eigenen
+  `*_screen.*`-Dateien.
+- Ein Teil des Zustands wird weiterhin zwischen Modulen geteilt. Die
+  schrittweise Verlagerung dieses Zustands ist noch offen.
 
 ## Wichtige Arbeitsregel
 

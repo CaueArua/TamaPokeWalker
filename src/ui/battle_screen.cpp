@@ -14,6 +14,8 @@
 #include "dex_screen.h"
 #include "main_screen.h"
 #include "party_screen.h"
+#include "render_utils.h"
+#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -21,21 +23,12 @@ extern PmdMon pmd;
 extern uint32_t wildPromptUntil;
 extern uint8_t currentDayPhase();
 extern void markUiDirty();
-extern void lockTouchBrief(uint16_t ms = 160);
 
 extern const char *dexName(int16_t dex);
 extern int sceneHour();
 extern void drawGameScene();
 extern void flushStampedFrame();
 extern int drawTypeChips(int x, int y, const DexEntry &d, bool alignRight);
-extern void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);
-extern void drawPmdAct(uint8_t actId, int cx, int groundY, uint32_t t,
-                       bool loop, bool sil, uint8_t maxS);
-extern void drawPmdActM(PmdMon &m, uint8_t actId, int cx, int groundY,
-                        uint32_t t, bool loop, bool sil, uint8_t maxS);
-extern void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette);
-extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
-
 BattleScreen battleScreen;
 static constexpr int BATTLE_CX = 233;
 

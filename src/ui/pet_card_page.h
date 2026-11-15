@@ -2,6 +2,8 @@
 #include "screen.h"
 
 static constexpr uint8_t PET_CARD_COUNT = 9;
+extern uint8_t cardPage;
+extern bool cardDirty;
 
 class PetCardPageScreen : public Screen {
 public:

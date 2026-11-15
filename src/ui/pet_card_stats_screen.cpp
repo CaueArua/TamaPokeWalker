@@ -6,11 +6,11 @@
 #include "../../i18n.h"
 #include "battle_screen.h"
 #include "strength_screen.h"
+#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
 extern void markUiDirty();
-extern void lockTouchBrief(uint16_t ms = 160);
 extern StrengthTrainingScreen strengthTrainingScreen;
 
 PetCardStatsScreen petCardStatsScreen;

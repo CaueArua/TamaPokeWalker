@@ -8,6 +8,7 @@
 #include "../../species.h"
 #include "../../time_utils.h"
 #include "game_screen_common.h"
+#include "render_utils.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -15,8 +16,6 @@ extern Pet pet;
 extern void drawGameScene();
 extern void flushStampedFrame();
 extern int sceneHour();
-extern void drawMap(const char *const *map, int n, int x, int y, int s, bool silhouette);
-
 GameCatchScreen gameCatchScreen;
 
 static constexpr int CATCH_CX = 233;

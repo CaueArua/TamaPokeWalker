@@ -9,6 +9,7 @@
 #include "../../species.h"
 #include "../../time_utils.h"
 #include "game_screen_common.h"
+#include "render_utils.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -18,8 +19,6 @@ extern void flushStampedFrame();
 extern int sceneHour();
 extern const char *battleTypeName(uint8_t type);
 extern uint16_t battleTypeColor(uint8_t type);
-extern uint16_t lerp565(uint16_t a, uint16_t b, int i, int n);
-
 GameTypeScreen gameTypeScreen;
 
 static const uint8_t TYPE_DEF_POOL[] = {

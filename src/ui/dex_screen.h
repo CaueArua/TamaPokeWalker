@@ -54,6 +54,3 @@ public:
 };
 
 extern DexScreen dexScreen;
-
-/** Draws an encoded sprite thumbnail centered in its cell. */
-void drawThumb(const uint8_t *b, int x, int y, int s, bool sil);

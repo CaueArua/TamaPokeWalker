@@ -1,7 +1,7 @@
 #include "screen.h"
+#include "touch_controller.h"
 
 extern void markUiDirty();
-extern void lockTouchBrief(uint16_t ms = 160);
 
 Screen* activeScreen = nullptr;
 

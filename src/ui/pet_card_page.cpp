@@ -13,13 +13,14 @@
 #include "../../species.h"
 #include "../../i18n.h"
 #include "../../audio.h"
+#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
-extern uint8_t cardPage;
-extern bool cardDirty;
 extern bool expeditionTrainChoiceOpen;
 extern void flushStampedFrame();
-extern void lockTouchBrief(uint16_t ms = 160);
+
+uint8_t cardPage = 0;
+bool cardDirty = true;
 
 PetCardPageScreen *petCardScreenForPage(uint8_t page) {
   switch (page) {

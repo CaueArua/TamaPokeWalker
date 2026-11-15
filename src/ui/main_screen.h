@@ -1,9 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-
-extern const uint16_t BIOME_SOIL[6];
-extern const uint16_t STARS[6][2];
+#include "scene_renderer.h"
 
 struct PetBehavior {
   uint8_t mode = 0;
@@ -28,6 +26,30 @@ struct GameMenuTile {
   int16_t x, y, w, h;
   uint8_t game;
 };
+
+extern bool gameMenuDirty;
+extern bool gameMenuOpen;
+extern uint32_t bathUntil;
+extern bool bathPending;
+extern BathBubble bubbles[14];
+extern uint32_t feedMenuUntil;
+extern uint32_t confirmUntil;
+extern uint8_t choiceKind;
+extern uint32_t choiceUntil;
+extern uint32_t wildPromptUntil;
+extern uint32_t nextWildEligible;
+extern uint32_t lastWildCheck;
+extern int16_t wildPromptDex;
+extern uint8_t wildPromptLevel;
+extern bool wildPromptShiny;
+extern uint32_t petEventUntil;
+extern uint32_t nextPetEventEligible;
+extern uint32_t lastPetEventCheck;
+extern uint8_t petEventType;
+extern uint32_t petEventFeedbackUntil;
+extern char petEventMsg[18];
+extern uint32_t morningUntil;
+extern uint32_t eggWiggleUntil;
 
 class MainScreen {
 public:
