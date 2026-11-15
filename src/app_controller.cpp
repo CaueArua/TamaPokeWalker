@@ -100,7 +100,7 @@ void runAppLoop() {
   uint32_t now = millis();
   uint32_t loopStart = now;
   bool petChanged = pet.update(now);
-  if (petChanged && activeScreen == petCardScreenForPage(cardPage) && cardPage != 7)
+  if (petChanged && activeScreen == petCardScreenForPage(cardPage))
     activeScreen->markDirty();
 
   // Play a sound when the pet becomes eligible to evolve, including after waking.

@@ -4,7 +4,6 @@
 #include "../../species.h"
 #include "../../pet.h"
 #include "../../i18n.h"
-#include "battle_screen.h"
 #include "strength_screen.h"
 #include "touch_controller.h"
 
@@ -39,25 +38,15 @@ void PetCardStatsScreen::renderPage() {
   gfx->setCursor(334, 266);
   gfx->print(bb);
 
-  gfx->fillRoundRect(96, 294, 274, 36, 11, 0x4C98);
+  gfx->fillRoundRect(96, 316, 274, 44, 11, UI_BAR_BAD);
   gfx->setTextColor(UI_BG_DAY);
   gfx->setTextSize(2);
-  gfx->setCursor(PET_CARD_CX - strlen(T(S_WILD_BATTLE)) * 6, 305);
-  gfx->print(T(S_WILD_BATTLE));
-
-  gfx->fillRoundRect(96, 338, 274, 36, 11, UI_BAR_BAD);
-  gfx->setTextColor(UI_BG_DAY);
-  gfx->setTextSize(2);
-  gfx->setCursor(PET_CARD_CX - strlen(T(S_TRAIN_STR)) * 6, 349);
+  gfx->setCursor(PET_CARD_CX - strlen(T(S_TRAIN_STR)) * 6, 330);
   gfx->print(T(S_TRAIN_STR));
 }
 
 void PetCardStatsScreen::handlePageTap(int16_t x, int16_t y) {
-  if (y >= 294 && y < 330 && x >= 82 && x <= 384) {
-    markUiDirty();
-    lockTouchBrief();
-    battleScreen.start();
-  } else if (y >= 338 && y < 374 && x >= 82 && x <= 384) {
+  if (y >= 316 && y < 360 && x >= 82 && x <= 384) {
     markUiDirty();
     lockTouchBrief();
     strengthTrainingScreen.open(this);

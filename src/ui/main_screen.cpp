@@ -19,14 +19,15 @@
 #include "../../time_utils.h"
 #include "dex_screen.h"
 #include "battle_screen.h"
+#include "activity_menu_screen.h"
 #include "menu_screen.h"
-#include "party_screen.h"
 #include "clock_screen.h"
 #include "game_ball_screen.h"
 #include "game_catch_screen.h"
 #include "game_clean_screen.h"
 #include "game_memo_screen.h"
 #include "game_type_screen.h"
+#include "pet_card_expedition_screen.h"
 #include "pet_card_page.h"
 #include "screen.h"
 #include "strength_screen.h"
@@ -89,7 +90,6 @@ static const uint8_t CRACK1[][2] = { {15,8},{16,9},{15,10} };
 static const uint8_t CRACK2[][2] = { {11,13},{12,14},{11,15},{20,12},{19,13},{20,14} };
 
 extern bool cardDirty;
-extern uint8_t cardPage;
 extern bool expeditionTrainChoiceOpen;
 extern const char *medalName(int index);
 extern uint8_t currentDayPhase();
@@ -268,10 +268,8 @@ bool inStepsHudHit(int16_t x, int16_t y) {
 
 /** Opens the steps card and closes any expedition training-choice overlay. */
 void openStepsCard() {
-  cardPage = 8;
   expeditionTrainChoiceOpen = false;
-  cardDirty = true;
-  setScreen(petCardScreenForPage(cardPage));
+  openPetCardPage(7);
   sfxPlay(SFX_MENU);
 }
 
@@ -297,19 +295,10 @@ bool expeditionHudVisible() {
   return pet.expeditionHudState(expeditionNowEpoch()) != EXP_HUD_HIDDEN;
 }
 
-/** Tests whether a point lies inside the visible expedition HUD hit area. */
-bool inExpeditionHudHit(int16_t x, int16_t y) {
+/** Keeps taps on the informational expedition badge from reaching the pet. */
+static bool inExpeditionHudBounds(int16_t x, int16_t y) {
   return expeditionHudVisible() && x >= EXP_HUD_X && x <= EXP_HUD_X + EXP_HUD_W &&
          y >= EXP_HUD_Y && y <= EXP_HUD_Y + EXP_HUD_H;
-}
-
-/** Opens the expedition card and closes any training-choice overlay. */
-void openExpeditionCard() {
-  cardPage = 7;
-  expeditionTrainChoiceOpen = false;
-  cardDirty = true;
-  setScreen(petCardScreenForPage(cardPage));
-  sfxPlay(SFX_MENU);
 }
 
 /** Draws the expedition status HUD when it is available. */
@@ -338,7 +327,11 @@ void drawExpeditionHud() {
   gfx->setCursor(EXP_HUD_X + 14, EXP_HUD_Y + 12);
   if (state == EXP_HUD_READY) gfx->print("!");
   else if (state == EXP_HUD_BAG) gfx->print("+");
-  else gfx->print(">");
+  else {
+    gfx->drawCircle(EXP_HUD_X + 17, EXP_HUD_Y + 17, 4, UI_WHITE);
+    gfx->drawFastVLine(EXP_HUD_X + 17, EXP_HUD_Y + 14, 4, UI_WHITE);
+    gfx->drawFastHLine(EXP_HUD_X + 17, EXP_HUD_Y + 17, 3, UI_WHITE);
+  }
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(1);
   gfx->setCursor(EXP_HUD_X + 31, EXP_HUD_Y + 13);
@@ -346,23 +339,23 @@ void drawExpeditionHud() {
 }
 
 void MainScreen::updateWalkCards(uint16_t walked, uint32_t stepsBefore, uint32_t stepDayBefore) {
-  if (walked && activeScreen == petCardScreenForPage(7)) cardDirty = true;
+  if (walked && activeScreen == &petCardExpeditionScreen) petCardExpeditionScreen.markDirty();
   if ((pet.stepsToday != stepsBefore || pet.stepDay != stepDayBefore) &&
-      activeScreen == petCardScreenForPage(8)) cardDirty = true;
+      activeScreen == petCardScreenForPage(7)) cardDirty = true;
 }
 
 void MainScreen::updateExpedition(uint32_t now) {
-  static uint32_t lastExpeditionCardTick = 0;
-  if (activeScreen == petCardScreenForPage(7) && now - lastExpeditionCardTick >= 1000UL) {
-    lastExpeditionCardTick = now;
-    cardDirty = true;
+  static uint32_t lastExpeditionScreenTick = 0;
+  if (activeScreen == &petCardExpeditionScreen && now - lastExpeditionScreenTick >= 1000UL) {
+    lastExpeditionScreenTick = now;
+    petCardExpeditionScreen.markDirty();
   }
 
   static bool expeditionWasActive = false;
   bool expeditionActiveNow = pet.expeditionActive(pet.lastSeenEpoch);
   if (expeditionWasActive && !expeditionActiveNow && pet.expeditionEndEpoch) {
     sfxPlay(SFX_EXPEDITION_FOUND);
-    if (activeScreen == petCardScreenForPage(7)) cardDirty = true;
+    if (activeScreen == &petCardExpeditionScreen) petCardExpeditionScreen.markDirty();
   }
   expeditionWasActive = expeditionActiveNow;
 }
@@ -928,7 +921,7 @@ void MainScreen::handleSwipe(int dir) {
     setScreen(&menuScreen);
     sfxPlay(SFX_MENU);
   } else if (!pet.isEgg()) {
-    partyScreen.open(&menuScreen);
+    setScreen(&activityMenuScreen);
     sfxPlay(SFX_MENU);
   }
 }
@@ -938,9 +931,7 @@ void MainScreen::handleSwipeV(int dir) {
   if (dir > 0) {
     if (!confirmUntil && !feedMenuUntil) clockSettingsScreen.open(nullptr);
   } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
-    cardPage = 0;
-    cardDirty = true;
-    setScreen(petCardScreenForPage(cardPage));
+    openPetCardPage(0);
     sfxPlay(SFX_MENU);
   }
 }
@@ -1480,10 +1471,7 @@ void MainScreen::handleTap(int16_t x, int16_t y) {
     return;
   }
   if (mainScreen.handleWildPromptTap(x, y)) return;
-  if (inExpeditionHudHit(x, y)) {
-    openExpeditionCard();
-    return;
-  }
+  if (inExpeditionHudBounds(x, y)) return;
   if (inStepsHudHit(x, y)) {
     openStepsCard();
     return;

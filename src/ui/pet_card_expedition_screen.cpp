@@ -1,5 +1,6 @@
 #include "pet_card_expedition_screen.h"
 #include "pet_card_common.h"
+#include <string.h>
 #include <Arduino_GFX_Library.h>
 #include "../../species.h"
 #include "../../pet.h"
@@ -9,17 +10,58 @@
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern bool cardDirty;
 extern uint32_t expeditionNowEpoch();
 extern StrId expeditionItemText(ExpeditionItem item);
 extern StrId expeditionSiteText(ExpeditionSite site);
 extern uint16_t expeditionSiteColor(ExpeditionSite site);
 extern uint16_t expeditionItemColor(ExpeditionItem item);
-extern void markUiDirty();
+extern void flushStampedFrame();
 
 bool expeditionTrainChoiceOpen = false;
 
 PetCardExpeditionScreen petCardExpeditionScreen;
+
+void PetCardExpeditionScreen::open(Screen *returnTo) {
+  returnScreen = returnTo;
+  expeditionTrainChoiceOpen = false;
+  markDirty();
+  setScreen(this);
+}
+
+void PetCardExpeditionScreen::close() {
+  Screen *target = returnScreen;
+  returnScreen = nullptr;
+  setScreen(target);
+  lockTouchBrief();
+  sfxPlay(SFX_TAP);
+}
+
+void PetCardExpeditionScreen::onExit() {
+  expeditionTrainChoiceOpen = false;
+}
+
+void PetCardExpeditionScreen::render() {
+  dirty = false;
+  gfx->fillScreen(UI_BG_DAY);
+  renderContents();
+  gfx->setTextColor(UI_TRACK);
+  gfx->setTextSize(1);
+  gfx->setCursor(PET_CARD_CX - (int)strlen(T(S_BACK)) * 3, 408);
+  gfx->print(T(S_BACK));
+  flushStampedFrame();
+}
+
+void PetCardExpeditionScreen::handleTap(int16_t x, int16_t y) {
+  handleExpeditionTap(x, y);
+}
+
+void PetCardExpeditionScreen::handleSwipe(int) {
+  close();
+}
+
+void PetCardExpeditionScreen::handleSwipeV(int dir) {
+  if (dir < 0) close();
+}
 
 /** Draws an expedition inventory item and its current quantity. */
 static void drawExpeditionItem(int x, int y, ExpeditionItem item) {
@@ -84,7 +126,7 @@ static void renderExpeditionTrainChoice() {
   gfx->print(T(S_BACK));
 }
 
-void PetCardExpeditionScreen::renderPage() {
+void PetCardExpeditionScreen::renderContents() {
   uint32_t nowEpoch = expeditionNowEpoch();
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
@@ -198,7 +240,7 @@ static int8_t expeditionItemAt(int16_t x, int16_t y) {
   return row * 2 + (right ? 1 : 0);
 }
 
-void PetCardExpeditionScreen::handlePageTap(int16_t x, int16_t y) {
+void PetCardExpeditionScreen::handleExpeditionTap(int16_t x, int16_t y) {
   if (expeditionTrainChoiceOpen) {
     int8_t stat = -1;
     if (y >= 172 && y < 238) {
@@ -214,19 +256,17 @@ void PetCardExpeditionScreen::handlePageTap(int16_t x, int16_t y) {
       if (!pet.useExpeditionItem(EXP_ITEM_TRAIN, (uint8_t)stat)) sfxPlay(SFX_DENY);
       else sfxPlay(SFX_ITEM_USE);
       expeditionTrainChoiceOpen = false;
-      cardDirty = true;
+      markDirty();
       lockTouchBrief();
       return;
     }
     expeditionTrainChoiceOpen = false;
-    cardDirty = true;
+    markDirty();
     sfxPlay(SFX_TAP);
     return;
   }
   if (y >= 396) {
-    setScreen(nullptr);
-    lockTouchBrief();
-    sfxPlay(SFX_TAP);
+    close();
     return;
   }
 
@@ -236,14 +276,14 @@ void PetCardExpeditionScreen::handlePageTap(int16_t x, int16_t y) {
       ExpeditionItem item = pet.claimExpedition(nowEpoch);
       if (item != EXP_ITEM_NONE) sfxPlay(SFX_EXPEDITION_CLAIM);
       else sfxPlay(SFX_DENY);
-      cardDirty = true;
+      markDirty();
       lockTouchBrief();
     }
     return;
   }
   if (!pet.expeditionActive(nowEpoch) && y >= 60 && y <= 88) {
     int idx = x >= 50 && x <= 156 ? 0 : x >= 180 && x <= 286 ? 1 : x >= 310 && x <= 416 ? 2 : -1;
-    if (idx >= 0) { siteChoice = (ExpeditionSite)idx; cardDirty = true; sfxPlay(SFX_TAP); lockTouchBrief(); }
+    if (idx >= 0) { siteChoice = (ExpeditionSite)idx; markDirty(); sfxPlay(SFX_TAP); lockTouchBrief(); }
     return;
   }
   if (!pet.expeditionActive(nowEpoch) && y >= 100 && y <= 154) {
@@ -251,7 +291,7 @@ void PetCardExpeditionScreen::handlePageTap(int16_t x, int16_t y) {
     int idx = x >= 50 && x <= 156 ? 0 : x >= 180 && x <= 286 ? 1 : x >= 310 && x <= 416 ? 2 : -1;
     if (idx >= 0 && pet.startExpedition(minutes[idx], nowEpoch, (uint8_t)random(100), (uint8_t)random(4), siteChoice, (uint8_t)random(100))) {
       sfxPlay(SFX_EXPEDITION_START);
-      cardDirty = true;
+      markDirty();
       lockTouchBrief();
     } else {
       sfxPlay(SFX_DENY);
@@ -268,10 +308,10 @@ void PetCardExpeditionScreen::handlePageTap(int16_t x, int16_t y) {
   }
   if (selected == EXP_ITEM_TRAIN) {
     expeditionTrainChoiceOpen = true;
-    cardDirty = true;
+    markDirty();
     sfxPlay(SFX_MENU);
   } else if (pet.useExpeditionItem(selected)) {
-    cardDirty = true;
+    markDirty();
     sfxPlay(SFX_ITEM_USE);
     lockTouchBrief();
   }

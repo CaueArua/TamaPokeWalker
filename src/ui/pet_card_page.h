@@ -1,7 +1,7 @@
 #pragma once
 #include "screen.h"
 
-static constexpr uint8_t PET_CARD_COUNT = 9;
+static constexpr uint8_t PET_CARD_COUNT = 8;
 extern uint8_t cardPage;
 extern bool cardDirty;
 
@@ -31,3 +31,5 @@ protected:
 
 /** Returns the screen instance associated with a pet-card page number. */
 PetCardPageScreen *petCardScreenForPage(uint8_t page);
+/** Opens a card page with an optional screen to return to when it closes. */
+void openPetCardPage(uint8_t page, Screen *returnTo = nullptr);

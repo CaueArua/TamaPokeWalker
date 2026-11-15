@@ -7,11 +7,13 @@
 #include "battle_screen.h"
 #include "clock_screen.h"
 #include "dex_screen.h"
+#include "activity_menu_screen.h"
 #include "help_screen.h"
 #include "keyboard_screen.h"
 #include "menu_screen.h"
 #include "main_screen.h"
 #include "party_screen.h"
+#include "pet_card_expedition_screen.h"
 #include "power_manager.h"
 #include "starter_screen.h"
 #include "strength_screen.h"
@@ -40,6 +42,8 @@ const char *screenName() {
   if (activeScreen == &keyboardScreen) return "keyboard";
   if (activeScreen == &helpScreen) return "help";
   if (activeScreen == &menuScreen) return "menu";
+  if (activeScreen == &activityMenuScreen) return "activities";
+  if (activeScreen == &petCardExpeditionScreen) return "expedition";
   if (activeScreen == &clockSettingsScreen) return "settings";
   if (activeScreen->isPetCardPage()) return "card";
   if (activeScreen == &partyScreen || activeScreen == &partyReplaceScreen) return "party";
@@ -64,7 +68,8 @@ uint16_t renderIntervalMs() {
   if (activeScreen == &dexScreen ||
       (activeScreen && activeScreen->isPetCardPage()) ||
       activeScreen == &keyboardScreen || activeScreen == &clockSettingsScreen ||
-      activeScreen == &helpScreen || gameMenuOpen) return powerSave ? 650 : 320;
+      activeScreen == &helpScreen || activeScreen == &activityMenuScreen ||
+      activeScreen == &petCardExpeditionScreen || gameMenuOpen) return powerSave ? 650 : 320;
   if (!powerSave) return 100;
   if (dimStage >= 2) return 650;
   if (dimStage >= 1) return 350;

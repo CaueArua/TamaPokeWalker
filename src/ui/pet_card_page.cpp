@@ -21,6 +21,7 @@ extern void flushStampedFrame();
 
 uint8_t cardPage = 0;
 bool cardDirty = true;
+static Screen *cardReturnScreen = nullptr;
 
 PetCardPageScreen *petCardScreenForPage(uint8_t page) {
   switch (page) {
@@ -31,10 +32,23 @@ PetCardPageScreen *petCardScreenForPage(uint8_t page) {
     case 4: return &petCardStatsScreen;
     case 5: return &petCardMedalsScreen;
     case 6: return &petCardProgressScreen;
-    case 7: return &petCardExpeditionScreen;
-    case 8: return &petCardStepsScreen;
+    case 7: return &petCardStepsScreen;
     default: return &petCardProfileScreen;
   }
+}
+
+void openPetCardPage(uint8_t page, Screen *returnTo) {
+  if (page >= PET_CARD_COUNT) return;
+  cardPage = page;
+  cardDirty = true;
+  cardReturnScreen = returnTo;
+  setScreen(petCardScreenForPage(page));
+}
+
+static void closePetCardPages() {
+  Screen *target = cardReturnScreen;
+  cardReturnScreen = nullptr;
+  setScreen(target);
 }
 
 void PetCardPageScreen::render() {
@@ -58,7 +72,7 @@ void PetCardPageScreen::handleTap(int16_t x, int16_t y) {
   handlePageTap(x, y);
   if (activeScreen != this) return;
   if (y >= 400) {
-    setScreen(nullptr);
+    closePetCardPages();
     lockTouchBrief();
     sfxPlay(SFX_TAP);
   }
@@ -79,7 +93,7 @@ void PetCardPageScreen::handleSwipe(int dir) {
 void PetCardPageScreen::handleSwipeV(int dir) {
   if (dir < 0) {
     expeditionTrainChoiceOpen = false;
-    setScreen(nullptr);
+    closePetCardPages();
     lockTouchBrief();
     sfxPlay(SFX_TAP);
   }
