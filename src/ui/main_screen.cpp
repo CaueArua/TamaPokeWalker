@@ -21,7 +21,7 @@
 #include "battle_screen.h"
 #include "activity_menu_screen.h"
 #include "menu_screen.h"
-#include "clock_screen.h"
+#include "settings_screen.h"
 #include "game_ball_screen.h"
 #include "game_catch_screen.h"
 #include "game_clean_screen.h"
@@ -929,7 +929,7 @@ void MainScreen::handleSwipe(int dir) {
 void MainScreen::handleSwipeV(int dir) {
   if (pet.ceremony) return;
   if (dir > 0) {
-    if (!confirmUntil && !feedMenuUntil) clockSettingsScreen.open(nullptr);
+    if (!confirmUntil && !feedMenuUntil) settingsScreen.open();
   } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
     openPetCardPage(0);
     sfxPlay(SFX_MENU);

@@ -1,37 +1,37 @@
-# Hoenn walking expedition candidate
+# Candidato de expedição a pé em Hoenn
 
-Local firmware: `1.36.2-hoenn-walk-local`. Public installer: `1.36.2` (same features as a debug-free release build).
-The debug build stays local; the public release is published only on request.
+Firmware local: `1.36.2-hoenn-walk-local`. Instalador público: `1.36.2` (mesmas funções, como build de release sem depuração).
+O build de depuração fica local; o release público é publicado somente sob solicitação.
 
-## Walking bonus
+## Bônus de caminhada
 
-Choose a site and a duration. Targets are 250 / 500 / 1,000 steps for
-15 / 30 / 60 minutes. Only detected steps during the tour count, including
-with the display off and across midnight. No walking is required for the
-normal item or the site seal.
+Escolha um local e uma duração. As metas são 250 / 500 / 1.000 passos para
+15 / 30 / 60 minutos. Somente os passos detectados durante a expedição contam,
+inclusive com o display desligado e atravessando a meia-noite. Não é preciso
+caminhar para obter o item normal nem o selo do local.
 
-The additional item is energy at the coast, care in the forest and training
-at the volcano. Coast/forest bonuses have a 10 / 15 / 20 percent training
-upgrade chance, fixed at departure. A full bonus slot or maxed training gives
-10 energy instead. Claiming a tour pays the bonus once.
+O item adicional é energia na costa, cuidado na floresta e treino no vulcão.
+Os bônus de costa/floresta têm 10 / 15 / 20% de chance de melhoria de treino,
+fixada na partida. Se o slot de bônus estiver cheio ou o treino já estiver no
+máximo, o bônus dá 10 de energia. Ao reivindicar a expedição, o bônus é pago uma única vez.
 
-Save backup version 2 includes walking progress. Public 1.36.1 backups and
-the previous local Hoenn backups are accepted; existing tours keep their
-main reward without a retrospective walking bonus.
+O backup de save versão 2 inclui o progresso de caminhada. Backups públicos da 1.36.1
+e backups locais anteriores de Hoenn são aceitos; expedições existentes mantêm
+a recompensa principal, sem bônus de caminhada retroativo.
 
-## Local hardware acceptance (reported done)
+## Aceitação em hardware local (marcada como concluída)
 
-The owner reported on 2026-11-06 that this build has been running on hardware
-for several weeks. The checklist below is kept as the reference procedure.
+O responsável relatou em 06/11/2026 que este build roda no hardware há várias semanas.
+A checklist abaixo é mantida como procedimento de referência.
 
-Run `bash tools/build_web_local.sh`, serve `web` on localhost and flash using
-`/dev.html`. Leave Erase device unchecked. Sprites do not need reinstalling.
+Execute `bash tools/build_web_local.sh`, sirva `web` em localhost e grave usando
+`/dev.html`. Deixe "Erase device" desmarcado. Os sprites não precisam ser reinstalados.
 
-- Check site names, goals and earned-bonus text in all six languages.
-- Start a tour, walk with display on/off and check the progress.
-- Reboot during a tour and check that saved progress remains.
-- Claim a normal item and a walking bonus, then verify no second claim.
-- Check full bonus inventory and maxed training give energy instead.
-- Check backup/restore preserves the active tour and earned bonus.
+- Verificar os nomes dos locais, as metas e o texto do bônus obtido nos seis idiomas.
+- Iniciar uma expedição, caminhar com o display ligado/desligado e conferir o progresso.
+- Reiniciar durante uma expedição e confirmar que o progresso salvo permanece.
+- Reivindicar um item normal e um bônus de caminhada, depois confirmar que não há segunda reivindicação.
+- Conferir que, com o inventário de bônus cheio ou o treino no máximo, o resultado é energia.
+- Conferir que backup/restauração preserva a expedição ativa e o bônus obtido.
 
-These physical tests cannot be replaced by the native test suite.
+Estes testes físicos não podem ser substituídos pela suíte de testes nativa.

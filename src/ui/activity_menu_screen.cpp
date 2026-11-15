@@ -171,7 +171,9 @@ void ActivityMenuScreen::handleTap(int16_t x, int16_t y) {
   }
 }
 
-void ActivityMenuScreen::handleSwipe(int) {
-  sfxPlay(SFX_TAP);
-  setScreen(nullptr);
+void ActivityMenuScreen::handleSwipe(int direction) {
+  if(direction == -1){
+      sfxPlay(SFX_TAP);
+      setScreen(nullptr);
+  }
 }

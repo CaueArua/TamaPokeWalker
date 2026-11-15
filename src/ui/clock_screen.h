@@ -10,9 +10,9 @@ class ClockSettingsScreen : public Screen {
 public:
   /** Initializes and activates the clock settings screen. */
   void open(Screen *returnTo);
-  /** Draws the clock and language settings. */
+  /** Draws the date and time settings. */
   void render() override;
-  /** Handles taps on the clock and language controls. */
+  /** Handles taps on the date and time controls. */
   void handleTap(int16_t x, int16_t y) override;
   /** Handles a vertical swipe to close the settings screen. */
   void handleSwipeV(int dir) override;
@@ -27,6 +27,4 @@ private:
 };
 
 extern ClockSettingsScreen clockSettingsScreen;
-extern int clockH;
-extern int clockM;
 extern bool clockDirty;

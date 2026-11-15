@@ -6,6 +6,7 @@
 #include "../../time_utils.h"
 #include "battle_screen.h"
 #include "clock_screen.h"
+#include "settings_screen.h"
 #include "dex_screen.h"
 #include "activity_menu_screen.h"
 #include "help_screen.h"
@@ -44,7 +45,8 @@ const char *screenName() {
   if (activeScreen == &menuScreen) return "menu";
   if (activeScreen == &activityMenuScreen) return "activities";
   if (activeScreen == &petCardExpeditionScreen) return "expedition";
-  if (activeScreen == &clockSettingsScreen) return "settings";
+  if (activeScreen == &settingsScreen) return "settings";
+  if (activeScreen == &clockSettingsScreen) return "clock";
   if (activeScreen->isPetCardPage()) return "card";
   if (activeScreen == &partyScreen || activeScreen == &partyReplaceScreen) return "party";
   if (activeScreen == &starterScreen) return "starter";
@@ -67,7 +69,7 @@ uint16_t renderIntervalMs() {
   if (activeScreen && (activeScreen->isMinigame() || activeScreen == &strengthTrainingScreen)) return 115;
   if (activeScreen == &dexScreen ||
       (activeScreen && activeScreen->isPetCardPage()) ||
-      activeScreen == &keyboardScreen || activeScreen == &clockSettingsScreen ||
+      activeScreen == &keyboardScreen || activeScreen == &clockSettingsScreen || activeScreen == &settingsScreen ||
       activeScreen == &helpScreen || activeScreen == &activityMenuScreen ||
       activeScreen == &petCardExpeditionScreen || gameMenuOpen) return powerSave ? 650 : 320;
   if (!powerSave) return 100;

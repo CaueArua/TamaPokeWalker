@@ -199,7 +199,9 @@ void MenuScreen::handleTap(int16_t x, int16_t y) {
   }
 }
 
-void MenuScreen::handleSwipe(int) {
-  sfxPlay(SFX_TAP);
-  setScreen(nullptr);
+void MenuScreen::handleSwipe(int direction) {
+  if(direction == 1){
+    sfxPlay(SFX_TAP);
+    setScreen(nullptr);
+  }  
 }

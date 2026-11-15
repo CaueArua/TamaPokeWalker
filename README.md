@@ -73,7 +73,12 @@ the cadence filter confirms real rhythmic steps. Single bumps are rejected.
 - Swipe sideways: Pokédex/gallery.
 - Swipe up: Profile, Personality, Daily, Box, Battle, Medals, Progress,
   Expedition and Steps/Trail cards.
-- Swipe down: clock, language, sound, power saving and help.
+- Swipe down: settings. Tap either side of the brightness or sound slider to
+  adjust it; sound and power saving take effect immediately. Brightness and
+  Wi-Fi are previews only and do not control the hardware. Swipe right for
+  date/time; System and Wi-Fi pages are not implemented. Swipe vertically to
+  return without applying date/time changes. Language selection and help are
+  not available from this menu yet.
 - Hold the Pokémon for three seconds: release dialog.
 - Short PWR press: display on/off. Long PWR press: full power-off.
 

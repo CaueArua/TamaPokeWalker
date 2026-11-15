@@ -1,6 +1,6 @@
 @AGENTS.md
 
-## Claude-spezifisch
+## Específico do Claude
 
-- Antworten auf Deutsch. Code, Bezeichner und Firmware-UI-Texte bleiben unverändert (Firmware-Texte ASCII).
-- Subagenten nur für breite Suchen im großen `TamaPoke.ino` (210 KB) oder lange Build-Logs; Änderungen an Firmware, Save-Struktur und Installer selbst vornehmen.
+- Respostas em português do Brasil (pt-BR). Código, identificadores e textos da interface do firmware permanecem inalterados (textos do firmware em ASCII).
+- Subagentes apenas para buscas amplas no grande `TamaPoke.ino` (210 KB) ou em logs longos de build; alterações em firmware, estrutura de save e instalador devem ser feitas diretamente.

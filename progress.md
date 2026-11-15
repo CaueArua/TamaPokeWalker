@@ -1,62 +1,59 @@
-# TamaPoke development progress
+# Progresso do desenvolvimento do TamaPoke
 
-Stand: 2026-11-05
+Situação em: 2026-11-05
 
-## Current state
+## Estado atual
 
-- Active branch: `local/full-gen3`; rollback tag: `local-before-gen3`.
-- The tested Gen‑3 feature commit `da8bfa8` is already on `fork/main`.
-- The hosted installer serves public Gen 3 `1.36.2` with #1–386.
-- GitHub Pages is switched to the Gen‑3 installer and the matching GitHub release
-  is published.
-- Local debug build: `1.36.2-hoenn-walk-local` with `TAMAPOKE_LOCAL_TEST`
-  (Hoenn walking expeditions, hardware-tested by the owner for several weeks; see
+- Branch ativo: `local/full-gen3`; tag de rollback: `local-before-gen3`.
+- O commit de funcionalidade Gen 3 testado, `da8bfa8`, já está em `fork/main`.
+- O instalador hospedado entrega a Gen 3 pública `1.36.2` com #1–386.
+- O GitHub Pages foi trocado para o instalador Gen 3 e o release do GitHub correspondente foi publicado.
+- Build de depuração local: `1.36.2-hoenn-walk-local` com `TAMAPOKE_LOCAL_TEST`
+  (expedições a pé em Hoenn; testado no hardware pelo responsável há várias semanas; ver
   `HOENN_WALK_LOCAL.md`).
-- Public release: `1.36.2` with `TAMAPOKE_GEN3_RELEASE`, without local debug
-  commands.
+- Release público: `1.36.2` com `TAMAPOKE_GEN3_RELEASE`, sem comandos de depuração locais.
 
-## Completed features
+## Funcionalidades concluídas
 
-- Gen‑2 and Gen‑3 Dex data through #386, six languages, stats, types, rarity
-  data, region/starter selection and evolution rules.
-- Evolution requires strictly three of four care values above 40 and supports
-  branch, bond, day/night and stat conditions.
-- All normal and Shiny SpriteCollab files through #386 plus 386 thumbnails.
-- Moving `@SE` attribution watermark.
-- Persistent software step counter, top-left HUD and Steps/Trail card.
-- Daily rewards at 500/2,000/5,000 steps, lifetime trail ranks, walking
-  JOY/BOND rewards and capped Shiny/catch bonuses.
-- Local browser controls for Pokémon, evolutions, battles and IMU/step
-  diagnostics; no terminal is needed for the debug workflow.
-- Gen‑3 build hardening: target-level evolution setup, Web Serial timeout and
-  reconnect handling, Box list reuse and complete thumbnail validation.
+- Dados do Dex Gen 2 e Gen 3 até #386, seis idiomas, atributos, tipos, dados de raridade,
+  seleção de região/starter e regras de evolução.
+- A evolução exige estritamente três de quatro valores de cuidado acima de 40 e suporta
+  condições de ramificação, vínculo, dia/noite e atributos.
+- Todos os arquivos SpriteCollab normais e Shiny até #386, mais 386 miniaturas.
+- Marca d'água `@SE` de atribuição em movimento.
+- Contador de passos persistente por software, HUD no canto superior esquerdo e cartão Passos/Trilha.
+- Recompensas diárias em 500/2.000/5.000 passos, classificações vitalícias de trilha,
+  recompensas de JOY/VÍNCULO por caminhada e bônus limitados de Shiny/captura.
+- Controles locais no navegador para Pokémon, evoluções, batalhas e diagnósticos de IMU/passos;
+  nenhum terminal é necessário para o fluxo de depuração.
+- Reforço do build Gen 3: configuração de evolução por alvo, tratamento de timeout e reconexão do
+  Web Serial, reaproveitamento da lista da Caixa e validação completa das miniaturas.
 
-## Sprite delivery
+## Entrega de sprites
 
-- `web/sprites.pak`: 503 entries for #1–251 including a 251-entry thumbnail file.
-- `web/sprites-gen3-update.pak`: 271 entries for #252–386 including the complete
-  386-entry thumbnail file.
-- A complete Gen‑3 installation sends those two packages sequentially.
-- `sprites-gen3-full.pak` was removed because it exceeded GitHub's 100-MB file
-  limit and must not be referenced by current instructions.
+- `web/sprites.pak`: 503 entradas para #1–251, incluindo um arquivo de miniaturas com 251 entradas.
+- `web/sprites-gen3-update.pak`: 271 entradas para #252–386, incluindo o arquivo completo de miniaturas com 386 entradas.
+- Uma instalação Gen 3 completa envia esses dois pacotes em sequência.
+- `sprites-gen3-full.pak` foi removido porque excedia o limite de 100 MB do GitHub
+  e não pode ser referenciado nas instruções atuais.
 
-## Installer paths
+## Caminhos do instalador
 
-- `/web/index.html`: live/public Gen‑3 installer.
-- `/web/dev.html`: local Gen‑3 debug installer with optional update/full choices.
-- `/web/release-gen3.html`: local reference copy with one mandatory full sprite
-  button and no debug controls.
+- `/web/index.html`: instalador Gen 3 público, ativo.
+- `/web/dev.html`: instalador Gen 3 de depuração local, com opções opcionais de atualização/completo.
+- `/web/release-gen3.html`: cópia local de referência com um único botão obrigatório de sprites completos
+  e sem controles de depuração.
 
-## Historical milestones
+## Marcos históricos
 
-- `local-before-full-gen2`: rollback before the full Gen‑2 work.
-- `local-before-steps`: rollback before the walking system.
-- `local-full-gen2-final`: completed Gen‑2 development snapshot.
-- `local-full-gen2-final-1.35.3` / `v1.35.3`: stable public Gen‑2 installer.
-- `local-before-gen3-bugfix-20260825`: snapshot before Gen‑3 hardening.
+- `local-before-full-gen2`: rollback antes do trabalho completo da Gen 2.
+- `local-before-steps`: rollback antes do sistema de caminhada.
+- `local-full-gen2-final`: snapshot concluído do desenvolvimento da Gen 2.
+- `local-full-gen2-final-1.35.3` / `v1.35.3`: instalador público estável da Gen 2.
+- `local-before-gen3-bugfix-20260825`: snapshot antes do reforço da Gen 3.
 
-## Follow-up
+## Próximos passos
 
-- Monitor real installs and keep the two-step sprite warning prominent.
-- Continue longer hardware soak tests for screen-off walking, rewards, six
-  languages, touch edges and save retention.
+- Acompanhar instalações reais e manter em destaque o aviso de sprites em duas etapas.
+- Continuar testes longos de hardware (soak tests) para caminhada com tela desligada, recompensas,
+  seis idiomas, bordas do touch e preservação do save.
