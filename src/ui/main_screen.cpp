@@ -19,6 +19,7 @@
 #include "../../time_utils.h"
 #include "dex_screen.h"
 #include "battle_screen.h"
+#include "menu_screen.h"
 #include "party_screen.h"
 #include "clock_screen.h"
 #include "game_ball_screen.h"
@@ -924,11 +925,10 @@ bool MainScreen::readyForShake() const {
 void MainScreen::handleSwipe(int dir) {
   if (pet.ceremony || confirmUntil) return;
   if (dir < 0) {
-    dexScreen.openGrid();
-    setScreen(&dexScreen);
+    setScreen(&menuScreen);
     sfxPlay(SFX_MENU);
   } else if (!pet.isEgg()) {
-    setScreen(&partyScreen);
+    partyScreen.open(&menuScreen);
     sfxPlay(SFX_MENU);
   }
 }

@@ -42,7 +42,9 @@
  *
  * @return The version string defined by FW_VERSION.
  */
-const char *firmwareVersion() { return FW_VERSION; }
+const char *firmwareVersion() {
+  return FW_VERSION;
+}
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -54,9 +56,9 @@ Arduino_Canvas *gfx = new Arduino_Canvas(LCD_WIDTH, LCD_HEIGHT, panel);
 Pet pet;
 
 // Animated sprite assets for the current species, when available on the SD card.
-SdMon mon;          // Monochrome fallback sprite, also used by minigames.
-PmdMon pmd;         // Main-screen PMD sprite with multiple actions.
-PmdMon evoPmd;      // Previous form, shown only during the evolution flash.
+SdMon mon;      // Monochrome fallback sprite, also used by minigames.
+PmdMon pmd;     // Main-screen PMD sprite with multiple actions.
+PmdMon evoPmd;  // Previous form, shown only during the evolution flash.
 
 // Main-pet animation state.
 PetBehavior beh;

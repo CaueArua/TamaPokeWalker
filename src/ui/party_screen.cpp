@@ -5,7 +5,6 @@
 #include "../../dex.h"
 #include "../../audio.h"
 #include "../../i18n.h"
-#include "dex_screen.h"
 #include "render_utils.h"
 
 extern Arduino_Canvas *gfx;
@@ -137,6 +136,17 @@ static void drawPartyGrid(PmdMon sprites[PARTY_SIZE], bool largeMode) {
 PartyScreen partyScreen;
 PartyReplaceScreen partyReplaceScreen;
 
+void PartyScreen::open(Screen *returnTo) {
+  returnScreen = returnTo;
+  setScreen(this);
+}
+
+void PartyScreen::close() {
+  Screen *target = returnScreen;
+  returnScreen = nullptr;
+  setScreen(target);
+}
+
 void PartyReplaceScreen::closeReplacement() {
   Screen *target = returnScreen;
   returnScreen = nullptr;
@@ -174,15 +184,9 @@ void PartyScreen::render() {
 
   gfx->setTextSize(1);
   gfx->setTextColor(UI_TRACK);
-  gfx->fillRoundRect(76, 374, 116, 32, 8, UI_WHITE);
-  gfx->drawRoundRect(76, 374, 116, 32, 8, UI_INK);
-  gfx->setTextColor(UI_INK);
-  const char *dexLabel = T(S_SORT_DEX);
-  gfx->setCursor(134 - (int)strlen(dexLabel) * 3, 386);
-  gfx->print(dexLabel);
-  gfx->setTextColor(UI_TRACK);
-  gfx->setCursor(214, 386);
-  gfx->print("DESLIZE P/ VOLTAR");
+  const char *backLabel = "DESLIZE P/ VOLTAR";
+  gfx->setCursor(P_CX - (int)strlen(backLabel) * 3, 386);
+  gfx->print(backLabel);
 
   flushStampedFrame();
 }
@@ -195,23 +199,19 @@ void PartyScreen::handleTap(int16_t x, int16_t y) {
       if (pet.switchPartySlot(i)) {
         sfxPlay(SFX_EAT);
         speciesChirpPlay(pet.speciesId, true);
+        returnScreen = nullptr;
         setScreen(nullptr);
       }
       return;
     }
   }
 
-  if (y >= 375) {
-    dexScreen.openGrid(this);
-    setScreen(&dexScreen);
-    sfxPlay(SFX_MENU);
+  if (y >= 374) {
+    sfxPlay(SFX_TAP);
+    close();
   }
 }
 
-void PartyScreen::handleSwipe(int dir) {
-  sfxPlay(SFX_TAP);
-  setScreen(nullptr);
-}
 
 // =========================================================================
 // Catch replacement screen: compact party grid plus the newly caught species.

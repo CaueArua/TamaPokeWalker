@@ -9,6 +9,7 @@
 #include "dex_screen.h"
 #include "help_screen.h"
 #include "keyboard_screen.h"
+#include "menu_screen.h"
 #include "main_screen.h"
 #include "party_screen.h"
 #include "power_manager.h"
@@ -38,6 +39,7 @@ const char *screenName() {
   if (activeScreen == &battleScreen) return battleScreen.isResolved() ? "battle-result" : "battle";
   if (activeScreen == &keyboardScreen) return "keyboard";
   if (activeScreen == &helpScreen) return "help";
+  if (activeScreen == &menuScreen) return "menu";
   if (activeScreen == &clockSettingsScreen) return "settings";
   if (activeScreen->isPetCardPage()) return "card";
   if (activeScreen == &partyScreen || activeScreen == &partyReplaceScreen) return "party";

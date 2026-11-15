@@ -5,9 +5,15 @@
 
 class PartyScreen : public Screen {
 private:
+  Screen *returnScreen = nullptr;
   PmdMon slotPmd[PARTY_SIZE];
+  /** Returns to the screen that opened the party. */
+  void close();
 
 public:
+  /** Opens the party and records the screen to return to. */
+  void open(Screen *returnTo);
+
   /** Loads party sprite data when the party screen becomes active. */
   void onEnter() override;
   /** Releases party sprite data when the screen closes. */
@@ -19,8 +25,7 @@ public:
   void render() override;
   /** Handles party selection and slot actions. */
   void handleTap(int16_t x, int16_t y) override;
-  /** Changes the selected party page or selection. */
-  void handleSwipe(int dir) override;
+
 };
 
 class PartyReplaceScreen : public Screen {
