@@ -4,13 +4,9 @@
 #include "../../species.h"
 #include "../../pet.h"
 #include "../../i18n.h"
-#include "strength_screen.h"
-#include "touch_controller.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
-extern void markUiDirty();
-extern StrengthTrainingScreen strengthTrainingScreen;
 
 PetCardStatsScreen petCardStatsScreen;
 
@@ -37,18 +33,6 @@ void PetCardStatsScreen::renderPage() {
   gfx->print(bs);
   gfx->setCursor(334, 266);
   gfx->print(bb);
-
-  gfx->fillRoundRect(96, 316, 274, 44, 11, UI_BAR_BAD);
-  gfx->setTextColor(UI_BG_DAY);
-  gfx->setTextSize(2);
-  gfx->setCursor(PET_CARD_CX - strlen(T(S_TRAIN_STR)) * 6, 330);
-  gfx->print(T(S_TRAIN_STR));
 }
 
-void PetCardStatsScreen::handlePageTap(int16_t x, int16_t y) {
-  if (y >= 316 && y < 360 && x >= 82 && x <= 384) {
-    markUiDirty();
-    lockTouchBrief();
-    strengthTrainingScreen.open(this);
-  }
-}
+void PetCardStatsScreen::handlePageTap(int16_t, int16_t) {}

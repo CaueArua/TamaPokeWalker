@@ -16,6 +16,7 @@
 #define UI_BAR_WARN 0xED07  // #e8a23c
 #define UI_BAR_BAD 0xEA87  // #e8503a
 #define UI_WHITE 0xFFFF  // #ffffff
+#define UI_GOLD 0xFEA0  // #ffd700
 
 enum ElementType : uint8_t { TYPE_FUEGO, TYPE_PLANTA, TYPE_AGUA };
 

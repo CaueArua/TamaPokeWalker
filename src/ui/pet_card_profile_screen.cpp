@@ -10,6 +10,7 @@
 #include "render_utils.h"
 #include "touch_controller.h"
 #include "keyboard_screen.h"
+#include "strength_screen.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -17,6 +18,9 @@ extern PmdMon pmd;
 extern bool cardDirty;
 extern const char *dexName(int16_t dex);
 extern void speciesChirpPlay(int16_t dex, bool forced);
+extern void markUiDirty();
+extern StrengthTrainingScreen strengthTrainingScreen;
+
 
 PetCardProfileScreen petCardProfileScreen;
 
@@ -131,8 +135,15 @@ void PetCardProfileScreen::renderPage() {
   gfx->print(info);
 
   gfx->setTextColor(UI_TRACK);
-  gfx->setCursor(PET_CARD_CX - strlen(T(S_RENAME_HINT)) * 6, 326);
+  gfx->setTextSize(1);
+  gfx->setCursor(PET_CARD_CX - (int)strlen(T(S_RENAME_HINT)) * 3, 84);
   gfx->print(T(S_RENAME_HINT));
+
+  gfx->fillRoundRect(133, 318, 200, 24, 9, UI_BAR_BAD);
+  gfx->setTextColor(UI_BG_DAY);
+  gfx->setTextSize(2);
+  gfx->setCursor(PET_CARD_CX - (int)strlen(T(S_TRAIN_STR)) * 6, 322);
+  gfx->print(T(S_TRAIN_STR));
 
   const char *rank = T((StrId)(S_RANK_TRAINER + pet.collectionRank()));
   char known[22], frame[22];
@@ -170,7 +181,14 @@ void PetCardProfileScreen::handlePageTap(int16_t x, int16_t y) {
     speciesChirpPlay(pet.speciesId, true);
     return;
   }
+  if (y >= 318 && y <= 342 && x >= 133 && x <= 333) {
+    markUiDirty();
+    lockTouchBrief();
+    strengthTrainingScreen.open(this);
+    return;
+  }
   if (y < 84) {
+
     keyboardScreen.open(this);
     return;
   }

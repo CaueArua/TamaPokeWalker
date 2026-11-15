@@ -53,10 +53,12 @@ uint8_t pmdFrameAt(const PmdAct &action, uint32_t elapsedMs, bool loop) {
 }
 
 void drawPmdActM(PmdMon &mon, uint8_t action, int cx, int groundY,
-                 uint32_t elapsedMs, bool loop, bool silhouette, uint8_t maxScale) {
+                 uint32_t elapsedMs, bool loop, bool silhouette, uint8_t maxScale,
+                 bool uniformScale) {
   const PmdAct &animation = mon.acts[action];
   if (!animation.frames) return;
-  uint8_t scale = mon.acts[PMD_IDLE].h ? 170 / mon.acts[PMD_IDLE].h : 5;
+  // Per-species scale would cancel out differences in canvas size, so pets of different sizes look equal.
+  uint8_t scale = uniformScale ? maxScale : (mon.acts[PMD_IDLE].h ? 170 / mon.acts[PMD_IDLE].h : 5);
   if (scale < 2) scale = 2;
   if (scale > maxScale) scale = maxScale;
   while (scale > 2 && animation.h * scale > 250) scale--;
@@ -76,8 +78,8 @@ void drawPmdActM(PmdMon &mon, uint8_t action, int cx, int groundY,
 }
 
 void drawPmdAct(uint8_t action, int cx, int groundY, uint32_t elapsedMs,
-                bool loop, bool silhouette, uint8_t maxScale) {
-  drawPmdActM(pmd, action, cx, groundY, elapsedMs, loop, silhouette, maxScale);
+                bool loop, bool silhouette, uint8_t maxScale, bool uniformScale) {
+  drawPmdActM(pmd, action, cx, groundY, elapsedMs, loop, silhouette, maxScale, uniformScale);
 }
 
 void drawMap(const char *const *map, int size, int x, int y, int scale, bool silhouette) {

@@ -269,7 +269,7 @@ bool inStepsHudHit(int16_t x, int16_t y) {
 /** Opens the steps card and closes any expedition training-choice overlay. */
 void openStepsCard() {
   expeditionTrainChoiceOpen = false;
-  openPetCardPage(7);
+  openPetCardPage(PET_CARD_PAGE_STEPS);
   sfxPlay(SFX_MENU);
 }
 
@@ -341,7 +341,7 @@ void drawExpeditionHud() {
 void MainScreen::updateWalkCards(uint16_t walked, uint32_t stepsBefore, uint32_t stepDayBefore) {
   if (walked && activeScreen == &petCardExpeditionScreen) petCardExpeditionScreen.markDirty();
   if ((pet.stepsToday != stepsBefore || pet.stepDay != stepDayBefore) &&
-      activeScreen == petCardScreenForPage(7)) cardDirty = true;
+      activeScreen == petCardScreenForPage(PET_CARD_PAGE_STEPS)) cardDirty = true;
 }
 
 void MainScreen::updateExpedition(uint32_t now) {
@@ -561,6 +561,17 @@ extern PetBehavior beh;
 extern void overlayEye(const Species &sp, int x, int y, int s, int col);
 extern void overlayMouth(const Species &sp, int x, int y, int s, bool open);
 static constexpr int PET_GROUND = 304;
+// The large happy heart is 64 px tall and starts at PET_GROUND - 190; the happy bounce adds 6 px.
+static constexpr int PET_MAX_RISE = 190 - 64 - 6;
+
+/** Largest integer zoom that keeps the pet's top below the happy heart. */
+static uint8_t petSpriteScale(const PmdMon &mon) {
+  const PmdAct &idle = mon.acts[PMD_IDLE];
+  int rows = idle.base ? idle.base : idle.h;
+  if (rows <= 0) return 2;
+  int s = PET_MAX_RISE / rows;
+  return s < 2 ? 2 : (s > 5 ? 5 : s);
+}
 #ifndef C565
 #define C565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 #endif
@@ -589,7 +600,7 @@ void drawCeremony() {
       x = CX - (int)(((t - 0.30f) / 0.70f) * (CX + 120));
       fade = (t > 0.6f) && ((now / 160) % 2 == 0);  // Flicker into a silhouette.
     }
-    drawPmdAct(act, x, y, now, true, fade, 5);  // Fade into a silhouette as it leaves.
+    drawPmdActM(pmd, act, x, y, now, true, fade, petSpriteScale(pmd), true);  // Fade into a silhouette as it leaves.
     // Draw a falling tear.
     if (t < 0.55f) {
       int ty = y - 150 + (int)((now / 6) % 40);
@@ -618,7 +629,7 @@ void drawCeremony() {
     act = pmd.has(PMD_WALKR) ? PMD_WALKR : PMD_IDLE;
     x = CX + (int)(((t - 0.45f) / 0.55f) * (CX + 140));
   }
-  drawPmdAct(act, x, y, now, true, false, 5);
+  drawPmdActM(pmd, act, x, y, now, true, false, petSpriteScale(pmd), true);
   if (pet.showHeart())                     // Large heart following the pet.
     drawMap(SPR_HEART, 32, x + 50, y - 190, 2, false);
 }
@@ -645,8 +656,8 @@ void drawEvolveFX(uint32_t now) {
   // form remains visible for the final reveal flash.
   int period = 60 + (int)(220 * (1.0f - t));
   bool showOld = t < 0.9f && evoPmd.loaded && ((now / period) % 2) == 0;
-  if (showOld) drawPmdActM(evoPmd, PMD_IDLE, cx, PET_GROUND, 0, true, true, 5);
-  else drawPmdAct(PMD_IDLE, cx, PET_GROUND, 0, true, true, 5);
+  if (showOld) drawPmdActM(evoPmd, PMD_IDLE, cx, PET_GROUND, 0, true, true, petSpriteScale(evoPmd), true);
+  else drawPmdActM(pmd, PMD_IDLE, cx, PET_GROUND, 0, true, true, petSpriteScale(pmd), true);
   // Outward-moving sparks.
   for (int i = 0; i < 10; i++) {
     float a = i * (float)(PI / 5) + t * 4.0f;
@@ -758,7 +769,7 @@ void drawPetPMD() {
     if (!pmd.has(act)) act = PMD_IDLE;
   }
 
-  drawPmdAct(act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, 5);
+  drawPmdActM(pmd, act, (int)beh.x, PET_GROUND, now - beh.t0, loop || act == PMD_IDLE, false, petSpriteScale(pmd), true);
 
   if (pet.showHeart()) drawMap(SPR_HEART, 32, (int)beh.x + 50, PET_GROUND - 190, 2, false);
 }

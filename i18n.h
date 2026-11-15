@@ -94,6 +94,8 @@ enum StrId : uint8_t {
   S_EXP_COAST, S_EXP_VOLCANO, S_EXP_FOREST, S_EXP_SEALS_FMT,
   S_EXP_WALK_PROGRESS, S_EXP_WALK_EARNED,
   S_EVO_NEED_BOND,
+  // Pet summary buttons (S_PROGRESS is reused for the progress button).
+  S_SUM_INFOS, S_SUM_STATUS, S_SUM_MEDALS,
   STR_COUNT
 };
 

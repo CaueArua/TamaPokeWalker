@@ -1,5 +1,6 @@
 #include "pet_card_page.h"
 #include "pet_card_common.h"
+#include "pet_card_summary_screen.h"
 #include "pet_card_profile_screen.h"
 #include "pet_card_personality_screen.h"
 #include "pet_card_daily_screen.h"
@@ -23,17 +24,23 @@ uint8_t cardPage = 0;
 bool cardDirty = true;
 static Screen *cardReturnScreen = nullptr;
 
+/** Returns whether a page is a detail page that is reached only through the summary buttons. */
+static bool isDetailPage(uint8_t page) {
+  return page >= PET_CARD_SWIPE_COUNT;
+}
+
 PetCardPageScreen *petCardScreenForPage(uint8_t page) {
   switch (page) {
-    case 0: return &petCardProfileScreen;
-    case 1: return &petCardPersonalityScreen;
-    case 2: return &petCardDailyScreen;
-    case 3: return &petCardBoxScreen;
-    case 4: return &petCardStatsScreen;
-    case 5: return &petCardMedalsScreen;
-    case 6: return &petCardProgressScreen;
-    case 7: return &petCardStepsScreen;
-    default: return &petCardProfileScreen;
+    case PET_CARD_PAGE_SUMMARY: return &petCardSummaryScreen;
+    case PET_CARD_PAGE_INFOS: return &petCardProfileScreen;
+    case PET_CARD_PAGE_PERSONALITY: return &petCardPersonalityScreen;
+    case PET_CARD_PAGE_DAILY: return &petCardDailyScreen;
+    case PET_CARD_PAGE_BOX: return &petCardBoxScreen;
+    case PET_CARD_PAGE_STEPS: return &petCardStepsScreen;
+    case PET_CARD_PAGE_STATS: return &petCardStatsScreen;
+    case PET_CARD_PAGE_MEDALS: return &petCardMedalsScreen;
+    case PET_CARD_PAGE_PROGRESS: return &petCardProgressScreen;
+    default: return &petCardSummaryScreen;
   }
 }
 
@@ -42,6 +49,13 @@ void openPetCardPage(uint8_t page, Screen *returnTo) {
   cardPage = page;
   cardDirty = true;
   cardReturnScreen = returnTo;
+  setScreen(petCardScreenForPage(page));
+}
+
+void openPetCardSubpage(uint8_t page) {
+  if (page >= PET_CARD_COUNT) return;
+  cardPage = page;
+  cardDirty = true;
   setScreen(petCardScreenForPage(page));
 }
 
@@ -56,8 +70,8 @@ void PetCardPageScreen::render() {
   gfx->fillScreen(UI_BG_DAY);
   renderPage();
 
-  int dotsX = PET_CARD_CX - ((PET_CARD_COUNT - 1) * 24) / 2;
-  for (int i = 0; i < PET_CARD_COUNT; i++) {
+  int dotsX = PET_CARD_CX - ((PET_CARD_SWIPE_COUNT - 1) * 24) / 2;
+  for (int i = 0; i < PET_CARD_SWIPE_COUNT; i++) {
     if (i == cardPage) gfx->fillCircle(dotsX + i * 24, 400, 5, UI_INK);
     else gfx->drawCircle(dotsX + i * 24, 400, 4, UI_INK);
   }
@@ -72,16 +86,21 @@ void PetCardPageScreen::handleTap(int16_t x, int16_t y) {
   handlePageTap(x, y);
   if (activeScreen != this) return;
   if (y >= 400) {
-    closePetCardPages();
+    if (isDetailPage(cardPage)) {
+      openPetCardSubpage(PET_CARD_PAGE_SUMMARY);
+    } else {
+      closePetCardPages();
+    }
     lockTouchBrief();
     sfxPlay(SFX_TAP);
   }
 }
 
 void PetCardPageScreen::handleSwipe(int dir) {
+  if (isDetailPage(cardPage)) return;
   int next = (int)cardPage + (dir > 0 ? -1 : 1);
   uint8_t old = cardPage;
-  cardPage = next < 0 ? 0 : (next >= PET_CARD_COUNT ? PET_CARD_COUNT - 1 : next);
+  cardPage = next < 0 ? 0 : (next >= PET_CARD_SWIPE_COUNT ? PET_CARD_SWIPE_COUNT - 1 : next);
   if (cardPage != old) {
     expeditionTrainChoiceOpen = false;
     cardDirty = true;
@@ -89,6 +108,7 @@ void PetCardPageScreen::handleSwipe(int dir) {
     setScreen(petCardScreenForPage(cardPage));
   }
 }
+
 
 void PetCardPageScreen::handleSwipeV(int dir) {
   if (dir < 0) {

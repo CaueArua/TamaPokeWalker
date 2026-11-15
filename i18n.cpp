@@ -69,6 +69,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "PASOS", "HOY %lu", "TOTAL %lu", "RANGO RUTA %u",
     "SHINY 1/%u", "CAPTURA +%u%%", "PASO %lu", "BONUS DE PASOS", "COSTA", "VOLCAN", "BOSQUE", "SELLOS %u/3", "PASOS %u/%u", "BONUS GANADO",
     "Vinculo 50+",
+    "INFOS", "ESTADO", "MEDALLAS",
   },
   // ---------------- EN ----------------
   {
@@ -131,6 +132,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "STEPS", "TODAY %lu", "TOTAL %lu", "TRAIL RANK %u",
     "SHINY 1/%u", "CATCH +%u%%", "STEP %lu", "TRAIL REWARD", "COAST", "VOLCANO", "FOREST", "SEALS %u/3", "STEPS %u/%u", "WALK BONUS EARNED",
     "Need bond 50+",
+    "INFO", "STATUS", "MEDALS",
   },
   // ---------------- FR ----------------
   {
@@ -193,6 +195,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "PAS", "AUJOURD'HUI %lu", "TOTAL %lu", "RANG TRAIL %u",
     "SHINY 1/%u", "CAPTURE +%u%%", "PAS %lu", "BONUS DE PAS", "COTE", "VOLCAN", "FORET", "SCEAUX %u/3", "PAS %u/%u", "BONUS DE MARCHE",
     "Lien 50 requis",
+    "INFOS", "STATUT", "MEDAILLES",
   },
   // ---------------- DE ----------------
   {
@@ -255,6 +258,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "SCHRITTE", "HEUTE %lu", "GESAMT %lu", "TRAIL-RANG %u",
     "SHINY 1/%u", "FANG +%u%%", "SCHRITT %lu", "SCHRITT-BONUS", "KUESTE", "VULKAN", "WALD", "SIEGEL %u/3", "SCHRITTE %u/%u", "GEHBONUS VERDIENT",
     "Bindung 50 noetig",
+    "INFOS", "STATUS", "MEDAILLEN",
   },
   // ---------------- IT ----------------
   {
@@ -317,6 +321,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "PASSI", "OGGI %lu", "TOTALE %lu", "RANGO TRAIL %u",
     "SHINY 1/%u", "PRESA +%u%%", "PASSO %lu", "BONUS PASSI", "COSTA", "VULCANO", "BOSCO", "SIGILLI %u/3", "PASSI %u/%u", "BONUS OTTENUTO",
     "Legame 50+",
+    "INFO", "STATO", "MEDAGLIE",
   },
   // ---------------- PT ----------------
   {
@@ -379,6 +384,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "PASSOS", "HOJE %lu", "TOTAL %lu", "RANK TRILHA %u",
     "SHINY 1/%u", "CAPTURA +%u%%", "PASSO %lu", "BONUS PASSOS", "COSTA", "VULCAO", "FLORESTA", "SELOS %u/3", "PASSOS %u/%u", "BONUS GANHO",
     "Laco 50+",
+    "INFOS", "STATUS", "MEDALHAS",
   },
 };
 

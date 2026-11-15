@@ -16,13 +16,14 @@ uint32_t pmdActTotalMs(const PmdAct &action);
 /** Selects the PMD animation frame at the requested elapsed time. */
 uint8_t pmdFrameAt(const PmdAct &action, uint32_t elapsedMs, bool loop);
 
-/** Draws an action from a specific PMD sprite. */
+/** Draws an action from a specific PMD sprite. With uniformScale, maxScale is used as the zoom for every species. */
 void drawPmdActM(PmdMon &mon, uint8_t action, int cx, int groundY,
-                 uint32_t elapsedMs, bool loop, bool silhouette, uint8_t maxScale);
+                 uint32_t elapsedMs, bool loop, bool silhouette, uint8_t maxScale,
+                 bool uniformScale = false);
 
 /** Draws an action from the current pet's PMD sprite. */
 void drawPmdAct(uint8_t action, int cx, int groundY, uint32_t elapsedMs,
-                bool loop, bool silhouette, uint8_t maxScale);
+                bool loop, bool silhouette, uint8_t maxScale, bool uniformScale = false);
 
 /** Draws an n-by-n character sprite map at an integer scale. */
 void drawMap(const char *const *map, int size, int x, int y, int scale, bool silhouette);

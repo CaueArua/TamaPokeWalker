@@ -1,9 +1,21 @@
 #pragma once
 #include "screen.h"
 
-static constexpr uint8_t PET_CARD_COUNT = 8;
+/** Pet-card page indices. Pages from PET_CARD_SWIPE_COUNT on are detail pages reached only by buttons. */
+static constexpr uint8_t PET_CARD_PAGE_SUMMARY = 0;
+static constexpr uint8_t PET_CARD_PAGE_INFOS = 1;
+static constexpr uint8_t PET_CARD_PAGE_PERSONALITY = 2;
+static constexpr uint8_t PET_CARD_PAGE_DAILY = 3;
+static constexpr uint8_t PET_CARD_PAGE_BOX = 4;
+static constexpr uint8_t PET_CARD_PAGE_STEPS = 5;
+static constexpr uint8_t PET_CARD_PAGE_STATS = 6;
+static constexpr uint8_t PET_CARD_PAGE_MEDALS = 7;
+static constexpr uint8_t PET_CARD_PAGE_PROGRESS = 8;
+static constexpr uint8_t PET_CARD_SWIPE_COUNT = 6;
+static constexpr uint8_t PET_CARD_COUNT = 9;
 extern uint8_t cardPage;
 extern bool cardDirty;
+
 
 class PetCardPageScreen : public Screen {
 public:
@@ -33,3 +45,5 @@ protected:
 PetCardPageScreen *petCardScreenForPage(uint8_t page);
 /** Opens a card page with an optional screen to return to when it closes. */
 void openPetCardPage(uint8_t page, Screen *returnTo = nullptr);
+/** Opens a card page from inside the card, keeping the current return target. */
+void openPetCardSubpage(uint8_t page);
