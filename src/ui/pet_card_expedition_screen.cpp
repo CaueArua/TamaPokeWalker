@@ -97,12 +97,12 @@ static void renderExpeditionTrainChoice() {
   gfx->setCursor(PET_CARD_CX - strlen(title) * 6, 136);
   gfx->print(title);
 
+  const uint8_t statIdx[3] = { STAT_ATK, STAT_DEF, STAT_SPE };
   const StrId labels[3] = { S_TRAIN_ATK, S_TRAIN_DEF, S_TRAIN_SPE };
-  const uint8_t values[3] = { pet.trAtk, pet.trDef, pet.trSpe };
   const uint16_t cols[3] = { UI_BAR_BAD, 0x4C98, UI_BAR_WARN };
   for (uint8_t i = 0; i < 3; i++) {
     int x = 74 + i * 108;
-    bool usable = values[i] < 100;
+    bool usable = pet.evCanGain(statIdx[i]);
     gfx->fillRoundRect(x, 172, 102, 66, 9, usable ? cols[i] : UI_TRACK);
     gfx->setTextColor(UI_BG_DAY);
     gfx->setTextSize(2);

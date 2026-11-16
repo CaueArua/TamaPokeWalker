@@ -1,14 +1,16 @@
 #include "pet.h"
 #include "dex.h"
+#include "nationalDex.h"
+#include "pet_stats.h"
 #include "audio.h"
 #include "dayphase.h"
 
 namespace {
 constexpr uint32_t BACKUP_MAGIC = 0x314B4254UL; // TBK1
-constexpr uint16_t BACKUP_VERSION = 2;
+constexpr uint16_t BACKUP_VERSION = 3;
 struct __attribute__((packed)) PetBackup {
   uint32_t magic; uint16_t version, length; uint32_t checksum;
-  uint8_t fullness, joy, energy, hygiene, poops, weight, geneAtk, geneDef, geneSpe, trAtk, trDef, trSpe;
+  uint8_t fullness, joy, energy, hygiene, poops, weight; uint8_t evs[STAT_COUNT];
   uint8_t berryKnown, shiny, eggShiny, starterPick, eggTaps, careMistakes, lastEnd, bond, collectionFrame, dailyGoalDone, expeditionRewardItem, expeditionSite, hoennSealMask, stepDailyRewardMask, stepMilestoneMask, pendingStepRewardMask, shakeCountToday, walkJoyToday, walkJoyHour, walkBondToday, evoDeclinedLv;
   int16_t speciesId, eggTarget;
   uint32_t ageMinutes, lastSeenEpoch, lastCareDay, lastPetInteractMinute, dailyGoalDay, expeditionEndEpoch, stepDay, stepsToday, stepsTotal, lastMorningDay, shakeDay, walkDay, walkHour, evoDeclinedAge;
@@ -188,13 +190,11 @@ bool Pet::promoteNextFromParty() {
     shiny = next.shiny;
     memcpy(nick, next.nick, sizeof(nick));
     ageMinutes = next.ageMinutes;
-    geneAtk = next.geneAtk;
-    geneDef = next.geneDef;
-    geneSpe = next.geneSpe;
-    trAtk = next.trAtk;
-    trDef = next.trDef;
-    trSpe = next.trSpe;
+    nature = next.nature;
+    memcpy(ivs, next.ivs, sizeof(ivs));
+    memcpy(evs, next.evs, sizeof(evs));
     bond = next.bond;
+    xp = next.xp;
     fullness = next.fullness;
     joy = next.joy;
     energy = next.energy;
@@ -279,7 +279,7 @@ void Pet::tick() {
   if (lowestStat() >= 40) {
     if (++goodTicks >= 720) {
       goodTicks = 0;
-      if (trDef < 100) trDef++;
+    addEv(STAT_DEF, 1);
     }
   } else {
     goodTicks = 0;
@@ -341,7 +341,7 @@ void Pet::flushSave() {
 size_t Pet::exportBackup(uint8_t *out, size_t capacity) const {
   if (!out || capacity < sizeof(PetBackup)) return 0;
   PetBackup b = {}; b.magic=BACKUP_MAGIC; b.version=BACKUP_VERSION; b.length=sizeof(b);
-  b.fullness=fullness;b.joy=joy;b.energy=energy;b.hygiene=hygiene;b.poops=poops;b.weight=weight;b.geneAtk=geneAtk;b.geneDef=geneDef;b.geneSpe=geneSpe;b.trAtk=trAtk;b.trDef=trDef;b.trSpe=trSpe;
+  b.fullness=fullness;b.joy=joy;b.energy=energy;b.hygiene=hygiene;b.poops=poops;b.weight=weight;memcpy(b.evs,evs,sizeof(b.evs));
   b.berryKnown=berryKnown;b.shiny=shiny;b.eggShiny=eggShiny;b.starterPick=starterPick;b.eggTaps=eggTaps;b.careMistakes=careMistakes;b.lastEnd=lastEnd;b.bond=bond;b.collectionFrame=collectionFrame;b.dailyGoalDone=dailyGoalDone;b.expeditionRewardItem=expeditionRewardItem;b.expeditionSite=expeditionSite;b.hoennSealMask=hoennSealMask;b.stepDailyRewardMask=stepDailyRewardMask;b.stepMilestoneMask=stepMilestoneMask;b.pendingStepRewardMask=pendingStepRewardMask;b.shakeCountToday=shakeCountToday;b.walkJoyToday=walkJoyToday;b.walkJoyHour=walkJoyHour;b.walkBondToday=walkBondToday;b.evoDeclinedLv=evoDeclinedLv;
   b.speciesId=speciesId;b.eggTarget=eggTarget;b.ageMinutes=ageMinutes;b.lastSeenEpoch=lastSeenEpoch;b.lastCareDay=lastCareDay;b.lastPetInteractMinute=lastPetInteractMinute;b.dailyGoalDay=dailyGoalDay;b.expeditionEndEpoch=expeditionEndEpoch;b.stepDay=stepDay;b.stepsToday=stepsToday;b.stepsTotal=stepsTotal;b.lastMorningDay=lastMorningDay;b.shakeDay=shakeDay;b.walkDay=walkDay;b.walkHour=walkHour;b.evoDeclinedAge=evoDeclinedAge;
   b.streak=streak;b.bestStreak=bestStreak;b.medals=medals;b.totalMedals=totalMedals;b.lastMilestone=lastMilestone;b.gameHi=gameHi;b.strHi=strHi;b.catchHi=catchHi;b.memoHi=memoHi;b.cleanHi=cleanHi;b.typeHi=typeHi;b.battleWins=battleWins;b.battleLosses=battleLosses;b.battleStreak=battleStreak;b.bestBattleStreak=bestBattleStreak;b.dexRewardMask=dexRewardMask;
@@ -357,7 +357,7 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   uint32_t sum; memcpy(&sum, raw + 8, 4); memset(raw + 8, 0, 4);
   uint16_t version, storedLength; memcpy(&version, raw + 4, 2); memcpy(&storedLength, raw + 6, 2);
   if (storedLength != length || sum != backupChecksum(raw, length) ||
-      (version == 2 ? length != sizeof(PetBackup) : version != 1 || length == sizeof(PetBackup))) return false;
+      (version == 2 || version == BACKUP_VERSION ? length != sizeof(PetBackup) : version != 1 || length == sizeof(PetBackup))) return false;
   PetBackup b = {};
   if (length == oldSize - 2) {
     const size_t split = offsetof(PetBackup, expeditionSite);
@@ -365,6 +365,17 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
     memcpy(reinterpret_cast<uint8_t*>(&b) + split + 2, raw + split, length - split);
     b.expeditionSite = EXP_SITE_NONE;
   } else memcpy(&b, raw, length);
+  if (version <= 2) {  // v1/v2 stored genes then training values; only the training values carry over.
+    const uint8_t oldTr[3] = { b.evs[3], b.evs[4], b.evs[5] };
+    memset(b.evs, 0, sizeof(b.evs));
+    b.evs[STAT_ATK] = oldTr[0]; b.evs[STAT_DEF] = oldTr[1]; b.evs[STAT_SPE] = oldTr[2];
+  }
+  int evTotal = 0;
+  for (uint8_t i = 0; i < STAT_COUNT; i++) {
+    if (b.evs[i] > EV_STAT_MAX) return false;
+    evTotal += b.evs[i];
+  }
+  if (evTotal > EV_TOTAL_MAX) return false;
   if (version == 1) { b.expeditionMinutes=0; b.expeditionSteps=0; b.expeditionBonusItem=EXP_ITEM_NONE; }
   b.version=BACKUP_VERSION; b.length=sizeof(b); b.checksum=0;
   sum=backupChecksum(reinterpret_cast<const uint8_t*>(&b),sizeof(b));
@@ -372,7 +383,7 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   if (b.magic!=BACKUP_MAGIC || b.version!=BACKUP_VERSION || b.length!=sizeof(b) || sum!=backupChecksum(reinterpret_cast<const uint8_t*>(&b),sizeof(b)) || b.speciesId < -1 || b.speciesId > DEX_COUNT || b.eggTarget < 1 || b.eggTarget > DEX_COUNT || (b.expeditionRewardItem != EXP_ITEM_NONE && b.expeditionRewardItem >= EXP_ITEM_COUNT) || (b.expeditionSite != EXP_SITE_NONE && b.expeditionSite >= EXPEDITION_SITE_COUNT)) return false;
   expeditionMinutes=b.expeditionMinutes; expeditionSteps=b.expeditionSteps; expeditionBonusItem=b.expeditionBonusItem;
   prefs.putBool("init", true);
-  fullness=b.fullness;joy=b.joy;energy=b.energy;hygiene=b.hygiene;poops=b.poops;weight=b.weight;geneAtk=b.geneAtk;geneDef=b.geneDef;geneSpe=b.geneSpe;trAtk=b.trAtk;trDef=b.trDef;trSpe=b.trSpe;berryKnown=b.berryKnown;shiny=b.shiny;eggShiny=b.eggShiny;starterPick=b.starterPick;eggTaps=b.eggTaps;careMistakes=b.careMistakes;lastEnd=b.lastEnd;bond=b.bond;collectionFrame=b.collectionFrame;dailyGoalDone=b.dailyGoalDone;expeditionRewardItem=b.expeditionRewardItem;expeditionSite=b.expeditionSite;hoennSealMask=b.hoennSealMask & 7;stepDailyRewardMask=b.stepDailyRewardMask;stepMilestoneMask=b.stepMilestoneMask;pendingStepRewardMask=b.pendingStepRewardMask;shakeCountToday=b.shakeCountToday;walkJoyToday=b.walkJoyToday;walkJoyHour=b.walkJoyHour;walkBondToday=b.walkBondToday;evoDeclinedLv=b.evoDeclinedLv;
+  fullness=b.fullness;joy=b.joy;energy=b.energy;hygiene=b.hygiene;poops=b.poops;weight=b.weight;memcpy(evs,b.evs,sizeof(evs));nature=NATURE_HARDY;for(uint8_t i=0;i<STAT_COUNT;i++) ivs[i]=10;berryKnown=b.berryKnown;shiny=b.shiny;eggShiny=b.eggShiny;starterPick=b.starterPick;eggTaps=b.eggTaps;careMistakes=b.careMistakes;lastEnd=b.lastEnd;bond=b.bond;collectionFrame=b.collectionFrame;dailyGoalDone=b.dailyGoalDone;expeditionRewardItem=b.expeditionRewardItem;expeditionSite=b.expeditionSite;hoennSealMask=b.hoennSealMask & 7;stepDailyRewardMask=b.stepDailyRewardMask;stepMilestoneMask=b.stepMilestoneMask;pendingStepRewardMask=b.pendingStepRewardMask;shakeCountToday=b.shakeCountToday;walkJoyToday=b.walkJoyToday;walkJoyHour=b.walkJoyHour;walkBondToday=b.walkBondToday;evoDeclinedLv=b.evoDeclinedLv;
   speciesId=b.speciesId;eggTarget=b.eggTarget;ageMinutes=b.ageMinutes;lastSeenEpoch=b.lastSeenEpoch;lastCareDay=b.lastCareDay;lastPetInteractMinute=b.lastPetInteractMinute;dailyGoalDay=b.dailyGoalDay;expeditionEndEpoch=b.expeditionEndEpoch;stepDay=b.stepDay;stepsToday=b.stepsToday;stepsTotal=b.stepsTotal;lastMorningDay=b.lastMorningDay;shakeDay=b.shakeDay;walkDay=b.walkDay;walkHour=b.walkHour;evoDeclinedAge=b.evoDeclinedAge;streak=b.streak;bestStreak=b.bestStreak;medals=b.medals;totalMedals=b.totalMedals;lastMilestone=b.lastMilestone;gameHi=b.gameHi;strHi=b.strHi;catchHi=b.catchHi;memoHi=b.memoHi;cleanHi=b.cleanHi;typeHi=b.typeHi;battleWins=b.battleWins;battleLosses=b.battleLosses;battleStreak=b.battleStreak;bestBattleStreak=b.bestBattleStreak;dexRewardMask=b.dexRewardMask;
   memcpy(dailyGoalType,b.dailyGoalType,sizeof(dailyGoalType));memcpy(dailyGoalProgress,b.dailyGoalProgress,sizeof(dailyGoalProgress));memcpy(itemCounts,b.itemCounts,sizeof(itemCounts));memcpy(dexReg,b.dexReg,sizeof(dexReg));memcpy(dexShinyReg,b.dexShinyReg,sizeof(dexShinyReg));memcpy(dexCaught,b.dexCaught,sizeof(dexCaught));memcpy(nick,b.nick,sizeof(nick));nick[sizeof(nick)-1]=0;ceremony=CER_NONE;if (collectionFrame >= unlockedCollectionFrameCount()) collectionFrame=0;save();return true;
 }
@@ -575,20 +586,117 @@ void Pet::rename(const char *name) {
   save();
 }
 
-/** Calculates a battle stat from its base value, gene, level, and training. */
-static uint16_t calcStat(uint8_t base, uint8_t gene, uint8_t lvl, uint8_t tr) {
-  return (uint16_t)base * gene / 100 + lvl + tr;
+namespace {
+struct NatureDef { const char *name; uint8_t up; uint8_t down; };
+// Alphabetical order, so Hardy is index 8 (see NATURE_HARDY). Up and down are STAT_* indices; up == down means neutral.
+const NatureDef NATURES[NATURE_COUNT] = {
+  {"Adamant", STAT_ATK, STAT_SPA}, {"Bashful", 0, 0},
+  {"Bold", STAT_DEF, STAT_ATK},    {"Brave", STAT_ATK, STAT_SPE},
+  {"Calm", STAT_SPD, STAT_ATK},    {"Careful", STAT_SPD, STAT_SPA},
+  {"Docile", 0, 0},                {"Gentle", STAT_SPD, STAT_DEF},
+  {"Hardy", 0, 0},                 {"Hasty", STAT_SPE, STAT_DEF},
+  {"Impish", STAT_DEF, STAT_SPA},  {"Jolly", STAT_SPE, STAT_SPA},
+  {"Lax", STAT_DEF, STAT_SPD},     {"Lonely", STAT_ATK, STAT_DEF},
+  {"Mild", STAT_SPA, STAT_DEF},    {"Modest", STAT_SPA, STAT_ATK},
+  {"Naive", STAT_SPE, STAT_SPD},   {"Naughty", STAT_ATK, STAT_SPD},
+  {"Quiet", STAT_SPA, STAT_SPE},   {"Quirky", 0, 0},
+  {"Rash", STAT_SPA, STAT_SPD},    {"Relaxed", STAT_DEF, STAT_SPE},
+  {"Sassy", STAT_SPD, STAT_SPE},   {"Serious", 0, 0},
+  {"Timid", STAT_SPE, STAT_ATK},
+};
+
+/**
+ * Returns the base stats of a species from the National Dex by natNum.
+ * Unknown species get the MissingNo stats.
+ */
+NationalDexStats baseStatsOf(uint16_t natNum) {
+  NationalDexStats s;
+  nationalDexGetStats(natNum, &s);
+  // Serial.printf("[STAT DBG] natNum=%u (entradas=%u): HP=%u ATK=%u DEF=%u SPA=%u SPD=%u SPE=%u\n",
+  //               natNum, nationalDexCount(), s.hp, s.attack, s.defense,
+  //               s.specialAttack, s.specialDefense, s.speed);
+  return s;
 }
 
-uint16_t Pet::atkStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bAtk, geneAtk, level(), trAtk);
+/** Returns the species base value that feeds a STAT_* index. */
+uint8_t baseStatOf(uint8_t statIdx, const NationalDexStats &s) {
+  switch (statIdx) {
+    case STAT_HP: return s.hp;
+    case STAT_ATK: return s.attack;
+    case STAT_DEF: return s.defense;
+    case STAT_SPA: return s.specialAttack;
+    case STAT_SPD: return s.specialDefense;
+    default: return s.speed;
+  }
 }
-uint16_t Pet::defStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bDef, geneDef, level(), trDef);
 }
-uint16_t Pet::speStat() const {
-  return isEgg() ? 0 : calcStat(DEX_TBL[speciesId].bSpe, geneSpe, level(), trSpe);
+
+const char *natureName(uint8_t nature) {
+  return NATURES[nature % NATURE_COUNT].name;
 }
+
+int8_t natureStatMod(uint8_t nature, uint8_t statIdx) {
+  const NatureDef &n = NATURES[nature % NATURE_COUNT];
+  if (n.up == n.down) return 0;
+  if (statIdx == n.up) return 1;
+  if (statIdx == n.down) return -1;
+  return 0;
+}
+
+
+uint16_t Pet::statValue(uint8_t statIdx) const {
+  return statValueAtEv(statIdx, statIdx < STAT_COUNT ? evs[statIdx] : 0);
+}
+
+uint16_t Pet::statValueAtEv(uint8_t statIdx, uint8_t ev) const {
+  if (isEgg() || statIdx >= STAT_COUNT) return 0;
+  const uint16_t natNum = DEX_TBL[speciesId].natNum;
+  const uint8_t baseValue = baseStatOf(statIdx, baseStatsOf(natNum));
+  const uint8_t lvl = level();
+  if (statIdx == STAT_HP) return calcularHP(baseValue, ivs[statIdx], ev, lvl, natNum == 292);
+  const int8_t mod = natureStatMod(nature, statIdx);
+  const double natureMult = mod > 0 ? 1.1 : (mod < 0 ? 0.9 : 1.0);
+  return calcularStat(baseValue, ivs[statIdx], ev, lvl, natureMult);
+}
+
+bool Pet::statBreakdown(uint8_t statIdx, StatBreakdown &out) const {
+  if (isEgg() || statIdx >= STAT_COUNT) return false;
+  out.base = baseStatOf(statIdx, baseStatsOf(DEX_TBL[speciesId].natNum));
+  out.iv = ivs[statIdx];
+  out.ev = evs[statIdx];
+  out.level = level();
+  out.natureMod = natureStatMod(nature, statIdx);
+  out.finalValue = statValue(statIdx);
+  return true;
+}
+
+
+bool Pet::evCanGain(uint8_t statIdx) const {
+  if (statIdx >= STAT_COUNT || evs[statIdx] >= EV_STAT_MAX) return false;
+  uint16_t total = 0;
+  for (uint8_t i = 0; i < STAT_COUNT; i++) total += evs[i];
+  return total < EV_TOTAL_MAX;
+}
+
+uint8_t Pet::addEv(uint8_t statIdx, uint8_t amount) {
+  if (statIdx >= STAT_COUNT) return 0;
+  int total = 0;
+  for (uint8_t i = 0; i < STAT_COUNT; i++) total += evs[i];
+  int room = EV_STAT_MAX - (int)evs[statIdx];
+  int totalRoom = EV_TOTAL_MAX - total;
+  if (totalRoom < room) room = totalRoom;
+  if (room <= 0) return 0;
+  uint8_t added = amount < room ? amount : (uint8_t)room;
+  evs[statIdx] += added;
+  return added;
+}
+
+uint16_t Pet::atkStat() const { return statValue(STAT_ATK); }
+uint16_t Pet::defStat() const { return statValue(STAT_DEF); }
+uint16_t Pet::speStat() const { return statValue(STAT_SPE); }
+uint16_t Pet::spaStat() const { return statValue(STAT_SPA); }
+uint16_t Pet::spdStat() const { return statValue(STAT_SPD); }
+
 
 uint16_t Pet::registeredCount() const {
   uint16_t n = 0;
@@ -653,9 +761,9 @@ uint16_t Pet::applyDexRewards() {
     if (GOALS[i] == 10) joy = clamp100((int)joy + 5);
     else if (GOALS[i] == 25) addBond(2);
     else if (GOALS[i] == 50) {
-      if (trAtk <= trDef && trAtk <= trSpe) trAtk = clamp100((int)trAtk + 1);
-      else if (trDef <= trAtk && trDef <= trSpe) trDef = clamp100((int)trDef + 1);
-      else trSpe = clamp100((int)trSpe + 1);
+      if (evs[STAT_ATK] <= evs[STAT_DEF] && evs[STAT_ATK] <= evs[STAT_SPE]) addEv(STAT_ATK, 1);
+      else if (evs[STAT_DEF] <= evs[STAT_ATK] && evs[STAT_DEF] <= evs[STAT_SPE]) addEv(STAT_DEF, 1);
+      else addEv(STAT_SPE, 1);
     } else if (GOALS[i] == 100) {
       addBond(4);
     } else {
@@ -777,13 +885,14 @@ void Pet::release() {
 void Pet::hatch() {
   speciesId = eggTarget;
   shiny = eggShiny;
-  // Roll individual genes from 90 to 110 percent for each stat.
-  geneAtk = 90 + random(21);
-  geneDef = 90 + random(21);
-  geneSpe = 90 + random(21);
-  trAtk = trDef = trSpe = 0;
+  nature = NATURE_HARDY;
+  for (uint8_t i = 0; i < STAT_COUNT; i++) {
+    ivs[i] = 10;
+    evs[i] = 0;
+  }
   berryKnown = false;
   bond = 0;          // Bond, medals, and nickname belong to each individual pet.
+  xp = 0;
   bondToday = 0;
   medals = 0;
   newMedal = 0;
@@ -1007,8 +1116,7 @@ void Pet::feedCandy() {
 
 void Pet::playResult(uint8_t score) {
   if (ceremony != CER_NONE || isEgg()) return;
-  uint8_t v = trSpe + score / 5;  // Playing trains speed.
-  trSpe = v > 100 ? 100 : v;
+  addEv(STAT_SPE, score / 5);  // Playing trains speed.
   joy = clamp100(joy + 5 + (score > 15 ? 30 : score * 2));
   energy = dropTo(energy, 10 + score / 2, 5);
   fullness = dropTo(fullness, 5, 5);
@@ -1026,8 +1134,7 @@ uint8_t Pet::applyCatchResult(uint8_t score) {
   if (ceremony != CER_NONE || isEgg()) return 0;
   uint8_t gain = score / 3;
   if (gain > 12) gain = 12;
-  uint8_t v = trSpe + gain;
-  trSpe = v > 100 ? 100 : v;
+  addEv(STAT_SPE, gain);
   joy = clamp100(joy + 4 + (score > 12 ? 20 : score));
   energy = dropTo(energy, 8 + score / 3, 5);
   fullness = dropTo(fullness, 4, 5);
@@ -1046,8 +1153,7 @@ uint8_t Pet::applyMemoResult(uint8_t rounds) {
   if (ceremony != CER_NONE || isEgg()) return 0;
   uint8_t gain = rounds / 2;
   if (gain > 10) gain = 10;
-  uint8_t v = trDef + gain;
-  trDef = v > 100 ? 100 : v;
+  addEv(STAT_DEF, gain);
   joy = clamp100(joy + 5 + (rounds > 8 ? 18 : rounds * 2));
   energy = dropTo(energy, 6 + rounds / 2, 5);
   fullness = dropTo(fullness, 3, 5);
@@ -1081,8 +1187,7 @@ uint8_t Pet::applyTypeResult(uint8_t score) {
   if (ceremony != CER_NONE || isEgg()) return 0;
   uint8_t gain = score / 4;
   if (gain > 10) gain = 10;
-  uint8_t v = trAtk + gain;
-  trAtk = v > 100 ? 100 : v;
+  addEv(STAT_ATK, gain);
   joy = clamp100((int)joy + 4 + (score > 12 ? 18 : score));
   energy = dropTo(energy, 5 + score / 3, 8);
   fullness = dropTo(fullness, 2, 5);
@@ -1235,10 +1340,10 @@ void Pet::recordStepReward(uint8_t index) {
   } else if (index == 1) {
     energy = clamp100((int)energy + 10);
   } else {
-    uint8_t *stat = &trAtk;
-    if (trDef < *stat && trDef <= trSpe) stat = &trDef;
-    else if (trSpe < *stat && trSpe < trDef) stat = &trSpe;
-    if (*stat < 100) *stat = clamp100((int)*stat + 2);
+    uint8_t stat = STAT_ATK;
+    if (evs[STAT_DEF] < evs[stat] && evs[STAT_DEF] <= evs[STAT_SPE]) stat = STAT_DEF;
+    else if (evs[STAT_SPE] < evs[stat] && evs[STAT_SPE] < evs[STAT_DEF]) stat = STAT_SPE;
+    if (evCanGain(stat)) addEv(stat, 2);
     else joy = clamp100((int)joy + 8);
   }
 
@@ -1258,9 +1363,9 @@ void Pet::applyPendingStepRewards() {
     if (item < EXP_ITEM_COUNT && canReceiveExpeditionItem(item)) itemCounts[item]++;
     else if (i == 0) joy = clamp100((int)joy + 5);
     else if (i == 1) energy = clamp100((int)energy + 10);
-    else if (trAtk < 100) trAtk = clamp100((int)trAtk + 2);
-    else if (trDef < 100) trDef = clamp100((int)trDef + 2);
-    else if (trSpe < 100) trSpe = clamp100((int)trSpe + 2);
+    else if (evCanGain(STAT_ATK)) addEv(STAT_ATK, 2);
+    else if (evCanGain(STAT_DEF)) addEv(STAT_DEF, 2);
+    else if (evCanGain(STAT_SPE)) addEv(STAT_SPE, 2);
     else joy = clamp100((int)joy + 8);
     lastStepRewardEvent = (uint8_t)(STEP_REWARD_SNACK + i);
     stepRewardUntil = millis() + 4500UL;
@@ -1362,7 +1467,7 @@ PetPersonality Pet::personality() const {
   if (isEgg()) return PERS_BALANCED;
   if (weight >= 72 || energy <= 20) return PERS_LAZY;
   if (battleWins >= 8 || bestBattleStreak >= 4) return PERS_BRAVE;
-  if (catchHi >= 18 || memoHi >= 8 || gameHi >= 24 || trSpe >= 55) return PERS_PLAYFUL;
+  if (catchHi >= 18 || memoHi >= 8 || gameHi >= 24 || evs[STAT_SPE] * 100 / EV_STAT_MAX >= 55) return PERS_PLAYFUL;
   if ((bond >= 45 && careMistakes <= 1) || (streak >= 5 && careMistakes == 0)) return PERS_CALM;
   return PERS_BALANCED;
 }
@@ -1372,8 +1477,7 @@ uint8_t Pet::trainStrength(uint16_t hits) {
   if (ceremony != CER_NONE || isEgg()) return 0;
   uint8_t gain = hits / 4;          // About four hits grant one training point.
   if (gain > 18) gain = 18;         // Cap the gain per session.
-  uint8_t v = trAtk + gain;
-  trAtk = v > 100 ? 100 : v;
+  addEv(STAT_ATK, gain);
   energy = dropTo(energy, 12, 5);   // Training consumes energy.
   fullness = dropTo(fullness, 5, 5);
   int burn = (int)weight - hits / 3;  // It also reduces weight.
@@ -1396,13 +1500,13 @@ BattleReward Pet::applyBattleWin(int16_t wildDex, bool closeWin) {
   if (closeWin) reward.amount++;
   if (wild.bAtk >= wild.bDef && wild.bAtk >= wild.bSpe) {
     reward.stat = BATTLE_REWARD_DEF;
-    trDef = clamp100((int)trDef + reward.amount);
+    addEv(STAT_DEF, reward.amount);
   } else if (wild.bDef >= wild.bAtk && wild.bDef >= wild.bSpe) {
     reward.stat = BATTLE_REWARD_ATK;
-    trAtk = clamp100((int)trAtk + reward.amount);
+    addEv(STAT_ATK, reward.amount);
   } else {
     reward.stat = BATTLE_REWARD_SPE;
-    trSpe = clamp100((int)trSpe + reward.amount);
+    addEv(STAT_SPE, reward.amount);
   }
   battleWins++;
   battleStreak++;
@@ -1457,7 +1561,7 @@ ExpeditionHudState Pet::expeditionHudState(uint32_t nowEpoch) const {
 
 bool Pet::canReceiveExpeditionItem(ExpeditionItem item) const {
   if (item >= EXP_ITEM_COUNT || itemCounts[item] >= EXP_ITEM_MAX) return false;
-  return item != EXP_ITEM_TRAIN || trAtk < 100 || trDef < 100 || trSpe < 100;
+  return item != EXP_ITEM_TRAIN || evCanGain(STAT_ATK) || evCanGain(STAT_DEF) || evCanGain(STAT_SPE);
 }
 
 bool Pet::expeditionInventoryFull() const {
@@ -1569,9 +1673,9 @@ bool Pet::useExpeditionItem(ExpeditionItem item, int8_t trainingStat) {
     hygiene = clamp100((int)hygiene + 30);
     if (poops > 0) poops--;
   } else {
-    if (trainingStat == TRAIN_STAT_ATK && trAtk < 100) trAtk = clamp100((int)trAtk + 2);
-    else if (trainingStat == TRAIN_STAT_DEF && trDef < 100) trDef = clamp100((int)trDef + 2);
-    else if (trainingStat == TRAIN_STAT_SPE && trSpe < 100) trSpe = clamp100((int)trSpe + 2);
+    if (trainingStat == TRAIN_STAT_ATK) addEv(STAT_ATK, 2);
+    else if (trainingStat == TRAIN_STAT_DEF) addEv(STAT_DEF, 2);
+    else if (trainingStat == TRAIN_STAT_SPE) addEv(STAT_SPE, 2);
     else return false;
   }
   itemCounts[item]--;
@@ -1641,12 +1745,9 @@ void Pet::save() {
   prefs.putUChar("hyg", hygiene);
   prefs.putUChar("poop", poops);
   prefs.putUChar("wgt", weight);
-  prefs.putUChar("gatk", geneAtk);
-  prefs.putUChar("gdef", geneDef);
-  prefs.putUChar("gspe", geneSpe);
-  prefs.putUChar("tatk", trAtk);
-  prefs.putUChar("tdef", trDef);
-  prefs.putUChar("tspe", trSpe);
+  prefs.putUChar("nat", nature);
+  prefs.putBytes("ivs", ivs, sizeof(ivs));
+  prefs.putBytes("evs", evs, sizeof(evs));
   prefs.putBool("bk", berryKnown);
   prefs.putBool("shy", shiny);
   prefs.putBool("eshy", eggShiny);
@@ -1669,6 +1770,7 @@ void Pet::save() {
   prefs.putUShort("bstrk", bestStreak);
   prefs.putUInt("cday", lastCareDay);
   prefs.putUChar("bond", bond);
+  prefs.putUInt("xp", xp);
   prefs.putUShort("medal", medals);
   prefs.putUShort("tmedal", totalMedals);
   prefs.putUShort("mstone", lastMilestone);
@@ -1727,17 +1829,17 @@ void Pet::load() {
   hygiene = prefs.getUChar("hyg", 100);
   poops = prefs.getUChar("poop", 0);
   weight = prefs.getUChar("wgt", 0);
-  geneAtk = prefs.getUChar("gatk", 0);
-  geneDef = prefs.getUChar("gdef", 0);
-  geneSpe = prefs.getUChar("gspe", 0);
-  if (geneAtk == 0) {  // Legacy pet without genes: generate them once.
-    geneAtk = 90 + random(21);
-    geneDef = 90 + random(21);
-    geneSpe = 90 + random(21);
+  nature = prefs.getUChar("nat", NATURE_HARDY);
+  if (prefs.isKey("evs")) {
+    prefs.getBytes("ivs", ivs, sizeof(ivs));
+    prefs.getBytes("evs", evs, sizeof(evs));
+  } else {  // Legacy save: the training values become EVs; IVs use the default.
+    memset(evs, 0, sizeof(evs));
+    evs[STAT_ATK] = prefs.getUChar("tatk", 0);
+    evs[STAT_DEF] = prefs.getUChar("tdef", 0);
+    evs[STAT_SPE] = prefs.getUChar("tspe", 0);
+    for (uint8_t i = 0; i < STAT_COUNT; i++) ivs[i] = 10;
   }
-  trAtk = prefs.getUChar("tatk", 0);
-  trDef = prefs.getUChar("tdef", 0);
-  trSpe = prefs.getUChar("tspe", 0);
   berryKnown = prefs.getBool("bk", false);
   shiny = prefs.getBool("shy", false);
   eggShiny = prefs.getBool("eshy", false);
@@ -1766,6 +1868,8 @@ void Pet::load() {
   bestStreak = prefs.getUShort("bstrk", 0);
   lastCareDay = prefs.getUInt("cday", 0);
   bond = prefs.getUChar("bond", 0);
+  xp = prefs.getUInt("xp", 0);
+  if (xp > PET_XP_MAX) xp = PET_XP_MAX;
   medals = prefs.getUShort("medal", 0);
   totalMedals = prefs.getUShort("tmedal", 0);
   lastMilestone = prefs.getUShort("mstone", 0);
@@ -1855,12 +1959,9 @@ void Pet::syncToParty() {
   s.shiny = shiny;
   memcpy(s.nick, nick, sizeof(nick));
   s.ageMinutes = ageMinutes;
-  s.geneAtk = geneAtk;
-  s.geneDef = geneDef;
-  s.geneSpe = geneSpe;
-  s.trAtk = trAtk;
-  s.trDef = trDef;
-  s.trSpe = trSpe;
+  s.nature = nature;
+  memcpy(s.ivs, ivs, sizeof(s.ivs));
+  memcpy(s.evs, evs, sizeof(s.evs));
   s.bond = bond;
   s.fullness = fullness;
   s.joy = joy;
@@ -1870,6 +1971,7 @@ void Pet::syncToParty() {
   s.careMistakes = careMistakes;
   s.medals = medals;
   s.berryKnown = berryKnown;
+  s.xp = xp;
 }
 
 bool Pet::switchPartySlot(uint8_t slot) {
@@ -1888,13 +1990,11 @@ bool Pet::switchPartySlot(uint8_t slot) {
   shiny = next.shiny;
   memcpy(nick, next.nick, sizeof(nick));
   ageMinutes = next.ageMinutes;
-  geneAtk = next.geneAtk;
-  geneDef = next.geneDef;
-  geneSpe = next.geneSpe;
-  trAtk = next.trAtk;
-  trDef = next.trDef;
-  trSpe = next.trSpe;
+  nature = next.nature;
+  memcpy(ivs, next.ivs, sizeof(ivs));
+  memcpy(evs, next.evs, sizeof(evs));
   bond = next.bond;
+  xp = next.xp;
   fullness = next.fullness;
   joy = next.joy;
   energy = next.energy;
@@ -1921,9 +2021,6 @@ int8_t Pet::addToParty(int16_t dex, bool isShiny, uint8_t lv) {
       s.speciesId = dex;
       s.shiny = isShiny;
       s.ageMinutes = (uint32_t)(lv > 1 ? lv - 1 : 0) * MINUTES_PER_LEVEL;
-      s.geneAtk = random(90, 111);
-      s.geneDef = random(90, 111);
-      s.geneSpe = random(90, 111);
       saveParty();
       return (int8_t)i;
     }
@@ -1947,9 +2044,6 @@ bool Pet::replacePartySlot(uint8_t slot, int16_t dex, bool isShiny, uint8_t lv) 
   s.speciesId = dex;
   s.shiny = isShiny;
   s.ageMinutes = (uint32_t)(lv > 1 ? lv - 1 : 0) * MINUTES_PER_LEVEL;
-  s.geneAtk = random(90, 111);
-  s.geneDef = random(90, 111);
-  s.geneSpe = random(90, 111);
 
   // If replacing the active pet, apply the new member to active state immediately.
   if (slot == activePartySlot) {
@@ -1958,11 +2052,11 @@ bool Pet::replacePartySlot(uint8_t slot, int16_t dex, bool isShiny, uint8_t lv) 
     shiny = s.shiny;
     memset(nick, 0, sizeof(nick));
     ageMinutes = s.ageMinutes;
-    geneAtk = s.geneAtk;
-    geneDef = s.geneDef;
-    geneSpe = s.geneSpe;
-    trAtk = trDef = trSpe = 0;
+    nature = s.nature;
+    memcpy(ivs, s.ivs, sizeof(ivs));
+    memcpy(evs, s.evs, sizeof(evs));
     bond = 0;
+    xp = 0;
     fullness = joy = energy = 80;
     hygiene = 100;
     weight = 0;
@@ -1984,10 +2078,145 @@ void Pet::saveParty() {
   prefs.putBytes("pData", party, sizeof(party));
 }
 
+int Pet::setPartyStats(int8_t slot, const uint8_t newIvs[STAT_COUNT], uint8_t newNature) {
+  int changed = 0;
+  for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+    if (slot >= 0 && i != slot) continue;
+    // The active slot is edited directly so save() and syncToParty() agree.
+    if (i == activePartySlot) {
+      if (isEgg()) continue;
+      memcpy(ivs, newIvs, sizeof(ivs));
+      nature = newNature;
+    } else {
+      if (party[i].speciesId <= 0) continue;
+      memcpy(party[i].ivs, newIvs, sizeof(party[i].ivs));
+      party[i].nature = newNature;
+    }
+    changed++;
+  }
+  if (changed) {
+    save();
+    saveParty();
+  }
+  return changed;
+}
+
+void Pet::setActiveBond(uint8_t value) {
+  bond = value;
+  save();
+  saveParty();
+}
+
+bool Pet::setActiveShiny() {
+  if (isEgg()) return false;
+  shiny = true;
+  dexShinyReg[(speciesId - 1) >> 3] |= (1 << ((speciesId - 1) & 7));
+  save();
+  saveParty();
+  return true;
+}
+
+bool Pet::setActiveEvs(const uint8_t newEvs[STAT_COUNT]) {
+  if (isEgg()) return false;
+  int total = 0;
+  for (uint8_t i = 0; i < STAT_COUNT; i++) {
+    if (newEvs[i] > EV_STAT_MAX) return false;
+    total += newEvs[i];
+  }
+  if (total > EV_TOTAL_MAX) return false;
+  memcpy(evs, newEvs, sizeof(evs));
+  save();
+  saveParty();
+  return true;
+}
+
+bool Pet::setActiveSpecies(int16_t dex) {
+  if (isEgg() || dex < 1 || dex > DEX_COUNT) return false;
+  speciesId = dex;
+  save();
+  saveParty();
+  return true;
+}
+
+bool Pet::setActiveLevel(uint8_t lv) {
+  if (isEgg() || lv < 1 || lv > 100) return false;
+  ageMinutes = (uint32_t)(lv - 1) * MINUTES_PER_LEVEL;
+  save();
+  saveParty();
+  return true;
+}
+
+// Layout saved before the stats refactor (gene/tr bytes instead of nature/ivs/evs).
+struct PartySlotV2 {
+  int16_t speciesId;
+  bool shiny;
+  char nick[12];
+  uint32_t ageMinutes;
+  uint8_t geneAtk, geneDef, geneSpe;
+  uint8_t trAtk, trDef, trSpe;
+  uint8_t bond, fullness, joy, energy, hygiene, weight, careMistakes;
+  uint16_t medals;
+  bool berryKnown;
+};
+
+// Layout saved before PartySlot gained xp; xp is appended, so this is a byte prefix of the current slot.
+struct PartySlotPreXp {
+  int16_t speciesId = 0;
+  bool shiny = false;
+  char nick[12] = "";
+  uint32_t ageMinutes = 0;
+  uint8_t nature = NATURE_HARDY;
+  uint8_t ivs[STAT_COUNT] = { 10, 10, 10, 10, 10, 10 };
+  uint8_t evs[STAT_COUNT] = { 0, 0, 0, 0, 0, 0 };
+  uint8_t bond = 0;
+  uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
+  uint8_t weight = 0;
+  uint8_t careMistakes = 0;
+  uint16_t medals = 0;
+  bool berryKnown = false;
+};
+static_assert(offsetof(PartySlot, xp) == sizeof(PartySlotPreXp), "xp must follow the legacy party prefix");
+
 void Pet::loadParty() {
   activePartySlot = prefs.getUChar("pSlot", 0);
   if (activePartySlot >= PARTY_SIZE) activePartySlot = 0;
   size_t len = prefs.getBytes("pData", party, sizeof(party));
+  if (len == sizeof(PartySlotV2) * PARTY_SIZE) {
+    PartySlotV2 legacy[PARTY_SIZE];
+    prefs.getBytes("pData", legacy, sizeof(legacy));
+    for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+      const PartySlotV2 &o = legacy[i];
+      PartySlot &s = party[i];
+      s = PartySlot();
+      s.speciesId = o.speciesId;
+      s.shiny = o.shiny;
+      memcpy(s.nick, o.nick, sizeof(s.nick));
+      s.ageMinutes = o.ageMinutes;
+      s.evs[STAT_ATK] = o.trAtk;
+      s.evs[STAT_DEF] = o.trDef;
+      s.evs[STAT_SPE] = o.trSpe;
+      s.bond = o.bond;
+      s.fullness = o.fullness;
+      s.joy = o.joy;
+      s.energy = o.energy;
+      s.hygiene = o.hygiene;
+      s.weight = o.weight;
+      s.careMistakes = o.careMistakes;
+      s.medals = o.medals;
+      s.berryKnown = o.berryKnown;
+    }
+    prefs.putBytes("pData", party, sizeof(party));
+    len = sizeof(party);
+  } else if (len == sizeof(PartySlotPreXp) * PARTY_SIZE) {
+    PartySlotPreXp legacy[PARTY_SIZE];
+    prefs.getBytes("pData", legacy, sizeof(legacy));
+    for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+      party[i] = PartySlot();
+      memcpy(&party[i], &legacy[i], sizeof(PartySlotPreXp));
+    }
+    prefs.putBytes("pData", party, sizeof(party));
+    len = sizeof(party);
+  }
   if (len != sizeof(party)) {
     memset(party, 0, sizeof(party));
     syncToParty(); // Initialize slot zero with the current pet.

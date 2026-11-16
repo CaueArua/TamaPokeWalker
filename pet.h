@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include "time_utils.h"
 #include "dex.h"
+#include "pet_growth.h"
 
 // One game tick is one in-game minute. Lower this value to accelerate testing.
 #define PET_TICK_MS 60000UL
@@ -116,20 +117,47 @@ struct BattleReward {
 
 #define PARTY_SIZE 6
 
+/** Stat indices shared by ivs[] and evs[]. */
+enum StatIdx : uint8_t { STAT_HP = 0, STAT_ATK, STAT_DEF, STAT_SPA, STAT_SPD, STAT_SPE, STAT_COUNT };
+#define NATURE_COUNT 25
+#define NATURE_HARDY 8
+#define EV_STAT_MAX 252
+#define EV_TOTAL_MAX 510
+
+/** Returns the display name of a nature index (0..NATURE_COUNT-1). */
+const char *natureName(uint8_t nature);
+/** Returns +1 for a stat boosted by the nature, -1 for a lowered stat, or 0. */
+int8_t natureStatMod(uint8_t nature, uint8_t statIdx);
+
+/** Inputs and result of one stat calculation, for diagnostics. */
+struct StatBreakdown {
+  uint8_t base;
+  uint8_t iv;
+  uint8_t ev;
+  uint8_t level;
+  int8_t natureMod;
+  uint16_t finalValue;
+};
+
+/** Highest experience value a pet can hold. */
+constexpr uint32_t PET_XP_MAX = 1640000UL;
+
 /** Persistent state stored for one party member. */
 struct PartySlot {
   int16_t speciesId = 0; // Zero means empty; 1..DEX_COUNT are species IDs.
   bool shiny = false;
   char nick[12] = "";
   uint32_t ageMinutes = 0; // Determines the current level.
-  uint8_t geneAtk = 100, geneDef = 100, geneSpe = 100;
-  uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  uint8_t nature = NATURE_HARDY;
+  uint8_t ivs[STAT_COUNT] = { 10, 10, 10, 10, 10, 10 };
+  uint8_t evs[STAT_COUNT] = { 0, 0, 0, 0, 0, 0 };
   uint8_t bond = 0;
   uint8_t fullness = 80, joy = 80, energy = 80, hygiene = 100;
   uint8_t weight = 0;
   uint8_t careMistakes = 0;
   uint16_t medals = 0;
   bool berryKnown = false;
+  uint32_t xp = 0; // Appended last so older party blobs keep their layout.
 };
 
 /** Owns pet gameplay state, persistence, progression, and party management. */
@@ -142,9 +170,10 @@ public:
   uint8_t hygiene = 100;  // Cleanliness.
   uint8_t poops = 0;      // On-screen waste, up to three.
   uint8_t weight = 0;     // Treats increase weight; minigames reduce it.
-  // Genes are rolled at hatching; training values range from 0 to 100.
-  uint8_t geneAtk = 100, geneDef = 100, geneSpe = 100;
-  uint8_t trAtk = 0, trDef = 0, trSpe = 0;
+  // Stat inputs in STAT_* order: IVs are fixed per pet, EVs come from training (max 252 each, 510 total).
+  uint8_t nature = NATURE_HARDY;
+  uint8_t ivs[STAT_COUNT] = { 10, 10, 10, 10, 10, 10 };
+  uint8_t evs[STAT_COUNT] = { 0, 0, 0, 0, 0, 0 };
   bool berryKnown = false;  // Whether the favorite berry has been discovered.
   bool shiny = false;       // Rare color variant rolled when the egg is created.
   uint32_t ageMinutes = 0;
@@ -163,6 +192,7 @@ public:
   uint32_t lastCareDay = 0;
   // Pet bond increases gradually with care and resets for a new pet.
   uint8_t bond = 0;
+  uint32_t xp = 0;       // Experience, capped at PET_XP_MAX.
   char nick[12] = "";    // Nickname; empty means use the species name.
   // Medals earned by this pet and the lifetime total across all pets.
   uint16_t medals = 0, totalMedals = 0;
@@ -210,6 +240,15 @@ public:
 
   /** Copies the active pet's state into its current party slot. */
   void syncToParty();
+  /** Sets IVs and nature for one party slot, or all occupied slots when slot is -1. Returns the count changed. */
+  int setPartyStats(int8_t slot, const uint8_t newIvs[STAT_COUNT], uint8_t newNature);
+  /** Sets the active pet's affection (bond, 0-255) and persists it. */
+  void setActiveBond(uint8_t value);
+  /** Marks the active pet as shiny, registers its shiny variant, and persists the change. */
+  bool setActiveShiny();
+  bool setActiveEvs(const uint8_t newEvs[STAT_COUNT]);
+  bool setActiveSpecies(int16_t dex);
+  bool setActiveLevel(uint8_t lv);
   /** Switches the active pet to the requested party slot. */
   bool switchPartySlot(uint8_t slot);
   /** Promotes the next occupied party slot to be the active pet. */
@@ -328,6 +367,20 @@ public:
   uint16_t defStat() const;
   /** Returns the active pet's calculated speed stat. */
   uint16_t speStat() const;
+  /** Returns the active pet's calculated special attack stat. */
+  uint16_t spaStat() const;
+  /** Returns the active pet's calculated special defense stat. */
+  uint16_t spdStat() const;
+  /** Returns the final value of a STAT_* index for the active pet. */
+  uint16_t statValue(uint8_t statIdx) const;
+  /** Same formula as statValue() but with an explicit EV, e.g. 0 to show the base + IV + level value. */
+  uint16_t statValueAtEv(uint8_t statIdx, uint8_t ev) const;
+  /** Fills out with the inputs and final value of a STAT_* index. Returns false for eggs or invalid indices. */
+  bool statBreakdown(uint8_t statIdx, StatBreakdown &out) const;
+  /** Returns whether a stat can still receive EVs under the per-stat and total caps. */
+  bool evCanGain(uint8_t statIdx) const;
+  /** Adds EVs to a stat within the caps and returns the amount actually added. */
+  uint8_t addEv(uint8_t statIdx, uint8_t amount);
   /** Starts a play interaction with the pet. */
   void play();
   /** Toggles the pet between sleeping and awake. */

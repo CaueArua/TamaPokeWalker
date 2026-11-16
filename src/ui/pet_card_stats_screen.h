@@ -7,6 +7,8 @@ public:
   void renderPage() override;
 
 protected:
+  /** Hides the swipe-page dots on this page. */
+  bool showPageDots() const override { return false; }
   /** Handles taps on the battle and training controls. */
   void handlePageTap(int16_t x, int16_t y) override;
 };

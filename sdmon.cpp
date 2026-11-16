@@ -2,10 +2,11 @@
 #include "pin_config.h"
 #include "dex.h"
 #include "thumb_format.h"
+#include "src/system/board_storage.h"
 #include <FS.h>
-#include <FFat.h>
 
 bool sdReady = false;
+static fs::FS *sdFs = nullptr;
 bool sdDirty = false;
 SdThumbs thumbs;
 
@@ -16,10 +17,10 @@ bool PmdMon::load(uint16_t dexNum, bool shiny) {
   char path[28];
   uint16_t fileId = (dexNum > 0 && dexNum <= DEX_COUNT) ? DEX_TBL[dexNum].natNum : dexNum;
   snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", fileId);
-  File f = FFat.open(path, FILE_READ);
+  File f = sdFs->open(path, FILE_READ);
   if (!f && shiny) {  // Fall back to the normal PMD sprite if shiny is unavailable.
     snprintf(path, sizeof(path), "/mons/p%03u.bin", fileId);
-    f = FFat.open(path, FILE_READ);
+    f = sdFs->open(path, FILE_READ);
   }
   if (!f) return false;
 
@@ -90,7 +91,7 @@ void PmdMon::unload() {
 bool SdThumbs::load() {
   unload();
   if (!sdReady) return false;
-  File f = FFat.open("/mons/thumbs.bin", FILE_READ);
+  File f = sdFs->open("/mons/thumbs.bin", FILE_READ);
   if (!f) {
     Serial.println("sin thumbs.bin (galeria sin miniaturas)");
     return false;
@@ -129,19 +130,13 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   return data + off;
 }
 
-bool sdBegin() {
-  sdReady = FFat.begin(true);
-  if (sdReady) {
-    Serial.printf("FFat montada: %llu MB total (%llu KB livres)\n",
-                  FFat.totalBytes() / (1024ULL * 1024ULL),
-                  FFat.freeBytes() / 1024ULL);
-    if (!FFat.exists("/mons")) {
-      FFat.mkdir("/mons");
-    }
-  } else {
-    Serial.println("Falha ao montar FFat (el juego usa los sprites de flash)");
+void sdBegin(fs::FS &fs) {
+  sdFs = &fs;
+  if (!fs.exists("/mons")) {
+    fs.mkdir("/mons");
   }
-  return sdReady;
+  sdReady = true;
+  Serial.println("SD pronto em /mons");
 }
 
 bool SdMon::load(uint16_t dexNum, bool shiny) {
@@ -150,10 +145,10 @@ bool SdMon::load(uint16_t dexNum, bool shiny) {
 
   char path[24];
   snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = FFat.open(path, FILE_READ);
+  File f = sdFs->open(path, FILE_READ);
   if (!f && shiny) {  // Fall back to the normal sprite if shiny is unavailable.
     snprintf(path, sizeof(path), "/mons/%03u.bin", dexNum);
-    f = FFat.open(path, FILE_READ);
+    f = sdFs->open(path, FILE_READ);
   }
   if (!f) {
     Serial.printf("no existe %s\n", path);
@@ -219,9 +214,31 @@ void SdMon::unload() {
 // ---------------------------------------------------------------------------
 // USB upload protocol for writing files to FFat without removing the card:
 //   PUT <path> <bytes>\n  + raw data   -> "OK" ... "DONE"
-//   LS\n                                  -> list /mons
+//   LS\n                                  -> list / and all subdirectories
 // Used by tools/send_sd.py.
 // ---------------------------------------------------------------------------
+
+// Prints "path size" for every entry under dirPath; directories end with '/' and are descended into.
+static void listDirRecursive(fs::FS &fs, const String &dirPath) {
+  File dir = fs.open(dirPath);
+  if (!dir || !dir.isDirectory()) return;
+  File e;
+  while ((e = dir.openNextFile())) {
+    String name = e.name();
+    int slash = name.lastIndexOf('/');
+    if (slash >= 0) name = name.substring(slash + 1);
+    String full = dirPath == "/" ? "/" + name : dirPath + "/" + name;
+    if (e.isDirectory()) {
+      e.close();
+      Serial.printf("%s/ 0\n", full.c_str());
+      listDirRecursive(fs, full);
+    } else {
+      Serial.printf("%s %u\n", full.c_str(), (uint32_t)e.size());
+      e.close();
+    }
+  }
+  dir.close();
+}
 
 bool sdSerialCommand(const String &line) {
   if (line.startsWith("PUT ")) {
@@ -233,8 +250,8 @@ bool sdSerialCommand(const String &line) {
       return true;
     }
     if (!path.startsWith("/")) path = "/" + path;
-    if (FFat.exists(path)) FFat.remove(path);
-    File f = FFat.open(path, FILE_WRITE);
+    if (sdFs->exists(path)) sdFs->remove(path);
+    File f = sdFs->open(path, FILE_WRITE);
     if (!f) {
       Serial.println("ERR");
       return true;
@@ -257,25 +274,17 @@ bool sdSerialCommand(const String &line) {
     Serial.println(remaining == 0 ? "DONE" : "ERR");
     return true;
   } else if (line == "LS") {
-    File dir = FFat.open("/mons");
-    if (dir) {
-      File e;
-      while ((e = dir.openNextFile())) {
-        Serial.printf("%s %u\n", e.name(), (uint32_t)e.size());
-        e.close();
-      }
-      dir.close();
-    }
+    listDirRecursive(getBoardStorage(), "/");
     Serial.println("DONE");
     return true;
   } else if (line == "CLEAR") {
-    File dir = FFat.open("/mons");
+    File dir = sdReady ? sdFs->open("/mons") : File();
     if (dir) {
       File e;
       while ((e = dir.openNextFile())) {
         String p = String("/mons/") + e.name();
         e.close();
-        FFat.remove(p);
+        sdFs->remove(p);
       }
       dir.close();
     }

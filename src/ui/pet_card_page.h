@@ -37,6 +37,8 @@ public:
 protected:
   /** Draws the content specific to the derived card page. */
   virtual void renderPage() = 0;
+  /** Returns whether the swipe-page indicator dots are drawn below the content. */
+  virtual bool showPageDots() const { return true; }
   /** Handles a tap on content specific to the derived card page. */
   virtual void handlePageTap(int16_t, int16_t) {}
 };

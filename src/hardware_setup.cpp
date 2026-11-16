@@ -5,8 +5,11 @@
 #include <Arduino_GFX_Library.h>
 
 #include "../i18n.h"
+#include "../nationalDex.h"
 #include "../pin_config.h"
 #include "../rtcbat.h"
+#include "../sdmon.h"
+#include "system/board_storage.h"
 
 extern Arduino_CO5300 *panel;
 extern Arduino_Canvas *gfx;
@@ -21,6 +24,17 @@ void initializeHardware() {
   // drops those optional log messages instead of blocking the firmware.
   Serial.setTxTimeoutMs(0);
   Serial.printf("TamaPoke fw v%s\n", firmwareVersion());
+  if (initBoardStorage()) {
+    Serial.println("[BOARD_STORAGE] Inicializado correctamente");
+    Serial.println("[BOARD_STORAGE] Iniciando SD...");
+    sdBegin(getBoardStorage());
+    Serial.println("[BOARD_STORAGE] SD iniciado");
+    Serial.println("[BOARD_STORAGE] Carregando National Dex...");
+    nationalDexLoad(getBoardStorage(), "/mons/national_dex.json");
+    Serial.println("[BOARD_STORAGE] National Dex carregado");
+  } else {
+    Serial.println("Falha ao montar FFat (el juego usa los sprites de flash)");
+  }
   loadLang();  // Load the saved language (Spanish by default).
   Wire.begin(IIC_SDA, IIC_SCL);
   // The CST9217 touch controller, AXP2101 PMU, and PCF85063 RTC share I2C.

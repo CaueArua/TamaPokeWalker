@@ -2,9 +2,10 @@
 
 #include <stdint.h>
 
+#include "../../biome.h"
 #include "../../i18n.h"
 
-extern const uint16_t BIOME_SOIL[6];
+extern const uint16_t BIOME_SOIL[BIOME_COUNT];
 extern const uint16_t STARS[6][2];
 extern bool gNight;
 

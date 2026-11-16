@@ -7,7 +7,9 @@
 
 #include "../../audio.h"
 #include "../../battle.h"
+#include "../../biome.h"
 #include "../../dex.h"
+#include "../../game_info.h"
 #include "../../dayphase.h"
 #include "../../i18n.h"
 #include "../../pet.h"
@@ -425,7 +427,7 @@ void drawPetSD();
 void MainScreen::render() {
   int h = sceneHour();
   gNight = isVisualNight(h, pet.sleeping);
-  drawScene(pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome, millis(), gNight);
+  drawScene(gameInfo.biome, millis(), gNight);
 
   if (pet.ceremony) {
     const DexEntry &d = DEX_TBL[pet.speciesId];
@@ -1185,8 +1187,46 @@ static void drawClouds(uint32_t now, uint16_t col) {
   }
 }
 
+/** Draws the deep-sea scene: a water column with fish swimming across it. */
+static void drawDeepSea(uint32_t now, bool night) {
+  uint16_t top = night ? C565(0x06, 0x16, 0x2a) : C565(0x16, 0x4a, 0x68);
+  uint16_t bot = night ? C565(0x01, 0x06, 0x12) : C565(0x04, 0x14, 0x2c);
+  for (int y = 0; y < 466; y += 8)
+    gfx->fillRect(0, y, 466, 8, lerp565(top, bot, y, 466));
+  static const uint16_t FISH[4] = { C565(0xff, 0x8c, 0x3a), C565(0xff, 0xd8, 0x4a),
+                                    C565(0xc8, 0xd4, 0xe0), C565(0xe8, 0x4a, 0x4a) };
+  for (int i = 0; i < 4; i++) {
+    int x = (int)((now / 30 + i * 140) % 560) - 47;
+    int y = 110 + i * 80;
+    gfx->fillCircle(x, y, 9, FISH[i]);
+    gfx->fillTriangle(x - 7, y, x - 18, y - 7, x - 18, y + 7, FISH[i]);
+    gfx->fillRect(x + 3, y - 3, 2, 2, C565(0x10, 0x18, 0x20));
+  }
+}
+
+/** Draws the open sea: a flat water surface with moving wave streaks below the horizon. */
+static void drawOpenSea(uint32_t now, bool night) {
+  uint16_t sea = night ? C565(0x1c, 0x34, 0x52) : C565(0x2a, 0x7a, 0xb8);
+  gfx->fillRect(0, HORIZON, 466, 466 - HORIZON, sea);
+  uint16_t streak = night ? C565(0x3a, 0x58, 0x78) : C565(0xbf, 0xe6, 0xf5);
+  for (int i = 0; i < 6; i++) {
+    int wy = HORIZON + 10 + i * 36;
+    int wx = (int)((now / 40 + i * 97) % 520) - 40;
+    gfx->fillRect(wx, wy, 40, 3, streak);
+  }
+}
+
+/** Draws the cave ceiling that replaces the sky; stalactites are added with the other biome details. */
+static void drawCaveCeiling(bool night) {
+  gfx->fillRect(0, 0, 466, HORIZON, night ? C565(0x18, 0x14, 0x16) : C565(0x4a, 0x42, 0x3c));
+}
+
 /** Draws the sky, celestial objects, ground, and biome details. */
 void drawScene(uint8_t biome, uint32_t now, bool night) {
+  if (biome == 9) {  // Deep sea replaces the whole scene.
+    drawDeepSea(now, night);
+    return;
+  }
   int h = sceneHour();
   uint16_t top, bot;
   if (night)            { top = C565(0x0c, 0x12, 0x24); bot = C565(0x1e, 0x26, 0x46); }
@@ -1210,8 +1250,15 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
     gfx->fillCircle(233, HORIZON - 6, 34, C565(0xff, 0xf1, 0xc8));  // Setting sun.
   }
 
+  // Caves cover the sky and sun with rock; open sea keeps the sky and skips the ground.
+  if (biome == 8) drawCaveCeiling(night);
+  if (biome == 10) {
+    drawOpenSea(now, night);
+    return;
+  }
+
   // Draw a band of water over the sand at the beach biome.
-  uint16_t soil = BIOME_SOIL[biome < 6 ? biome : 0];
+  uint16_t soil = BIOME_SOIL[biome < BIOME_COUNT ? biome : 0];
   if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
   if (biome == 1) {
     uint16_t sea = night ? C565(0x1c, 0x34, 0x52) : C565(0x4f, 0x96, 0xc4);
@@ -1251,6 +1298,33 @@ void drawScene(uint8_t biome, uint32_t now, bool night) {
       int fy = (f * 90 + now / 18) % HORIZON;
       gfx->fillRect(fx, fy, 3, 3, UI_WHITE);
     }
+  } else if (biome == 6) {  // City: buildings along the horizon; windows light up at night and dusk.
+    static const uint8_t BUILDING_H[8] = { 70, 110, 55, 130, 85, 100, 60, 120 };
+    bool lit = night || h < 8 || h >= 18;
+    int bx = -10;
+    for (int i = 0; i < 8; i++) {
+      int w = 46 + (i % 3) * 10;
+      int bh = BUILDING_H[i];
+      gfx->fillRect(bx, HORIZON - bh, w, bh, night ? C565(0x2a, 0x30, 0x44) : C565(0x6c, 0x72, 0x80));
+      for (int wy = HORIZON - bh + 10; wy < HORIZON - 8; wy += 16)
+        for (int wx = bx + 8; wx < bx + w - 8; wx += 14)
+          gfx->fillRect(wx, wy, 6, 8, lit ? C565(0xff, 0xd8, 0x6a) : C565(0xb8, 0xd0, 0xe0));
+      bx += w + 4;
+    }
+  } else if (biome == 7) {  // Swamp: bare trees and muddy puddles.
+    uint16_t moss = night ? C565(0x16, 0x24, 0x18) : C565(0x2f, 0x4d, 0x2c);
+    for (int tx : { 70, 210, 330, 420 }) {
+      gfx->fillRect(tx - 3, HORIZON - 70, 6, 72, dk);
+      gfx->fillTriangle(tx, HORIZON - 96, tx - 26, HORIZON - 52, tx + 26, HORIZON - 52, moss);
+    }
+    uint16_t water = night ? C565(0x1a, 0x2e, 0x30) : C565(0x3e, 0x5e, 0x52);
+    for (int px : { 40, 130, 290 }) gfx->fillRoundRect(px, HORIZON + 26, 60, 10, 5, water);
+  } else if (biome == 8) {  // Cave: stalactites from the ceiling and stalagmites from the floor.
+    uint16_t rock = night ? C565(0x2a, 0x26, 0x28) : C565(0x6a, 0x62, 0x58);
+    for (int sx : { 50, 140, 240, 330, 420 })
+      gfx->fillTriangle(sx - 14, 0, sx + 14, 0, sx, 40 + (sx % 3) * 16, rock);
+    for (int sx : { 95, 200, 290, 385 })
+      gfx->fillTriangle(sx - 12, HORIZON + 40, sx + 12, HORIZON + 40, sx, HORIZON + 14 + (sx % 3) * 8, rock);
   } else if (biome == 0) {  // Grassland: tufts of grass.
     for (int gx : { 80, 175, 300, 395 })
       for (int b = -1; b <= 1; b++)

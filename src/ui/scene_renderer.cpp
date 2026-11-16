@@ -1,7 +1,9 @@
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
+#include "../../biome.h"
 #include "../../dayphase.h"
 #include "../../dex.h"
+#include "../../game_info.h"
 #include "../../i18n.h"
 #include "../../pet.h"
 #include "../../pin_config.h"
@@ -140,13 +142,18 @@ StrId dayPhaseTextId(uint8_t phase) {
 }
 
 // Daytime ground colors for each biome; night scenes blend them toward blue.
-const uint16_t BIOME_SOIL[6] = {
+const uint16_t BIOME_SOIL[BIOME_COUNT] = {
   C565(0x7e, 0xc0, 0x7f),  // 0 meadow
   C565(0xdc, 0xca, 0x94),  // 1 beach
   C565(0x4f, 0x8a, 0x55),  // 2 forest
   C565(0x8a, 0x55, 0x44),  // 3 volcano
   C565(0xa8, 0x90, 0x6a),  // 4 mountain
   C565(0xe6, 0xee, 0xf5),  // 5 snow
+  C565(0x8c, 0x8c, 0x96),  // 6 city pavement
+  C565(0x5a, 0x46, 0x2e),  // 7 swamp mud
+  C565(0x6e, 0x64, 0x5a),  // 8 cave floor
+  C565(0x2a, 0x5e, 0x7c),  // 9 seabed
+  C565(0x2a, 0x7a, 0xb8),  // 10 open sea
 };
 /**
  * Draws the shared minigame background using the current hour and pet biome.
@@ -164,8 +171,8 @@ void drawGameScene() {
     gfx->fillRect(0, y, 466, 8, lerp565(top, bot, y, hor));
   if (night)
     for (auto &st : STARS) gfx->fillRect(st[0], st[1], 4, 4, UI_WHITE);
-  uint8_t bio = pet.isEgg() ? 0 : DEX_TBL[pet.speciesId].biome;
-  uint16_t soil = BIOME_SOIL[bio < 6 ? bio : 0];
+  uint8_t bio = gameInfo.biome;
+  uint16_t soil = BIOME_SOIL[bio < BIOME_COUNT ? bio : 0];
   if (night) soil = lerp565(soil, C565(0x16, 0x1c, 0x30), 9, 16);
   gfx->fillRect(0, hor, 466, 466 - hor, soil);
 }

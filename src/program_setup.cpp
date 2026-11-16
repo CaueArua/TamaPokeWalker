@@ -10,6 +10,7 @@
 #include "ui/power_manager.h"
 #include "ui/screen_controller.h"
 #include "ui/starter_screen.h"
+#include "../game_info.h"
 
 extern Pet pet;
 extern uint32_t lastRender;
@@ -17,11 +18,11 @@ extern uint32_t lastRender;
 /** Initializes game state, storage, power services, and the user interface. */
 void initializeProgram() {
   pet.begin();
+  gameInfoLoad();
   if (pet.awaitingStarter()) setScreen(&starterScreen);
   Serial.printf("SAVE %s spec=%d lv=%u wins=%u losses=%u streak=%u\n",
                 pet.saveLoadedFromNvs ? "loaded" : "created",
                 pet.speciesId, pet.level(), pet.battleWins, pet.battleLosses, pet.battleStreak);
-  sdBegin();
   thumbs.load();
 
   pwrSetup();

@@ -8,6 +8,7 @@
 #include "../../i18n.h"
 #include "../../species.h"
 #include "clock_screen.h"
+#include "game_info_screen.h"
 #include "power_manager.h"
 #include "settings_logic.h"
 
@@ -23,18 +24,19 @@ struct SettingsLabels {
   const char *power;
   const char *system;
   const char *dateTime;
+  const char *info;
   const char *preview;
   const char *medium;
   const char *maximum;
 };
 
 static const SettingsLabels LABELS[LANG_COUNT] = {
-  { "AJUSTES", "BRILLO", "VOLUMEN", "AHORRO", "SISTEMA", "FECHA/HORA", "BRILLO/WI-FI: VISTA PREVIA", "MEDIO", "MAX" },
-  { "SETTINGS", "BRIGHTNESS", "VOLUME", "POWER SAVE", "SYSTEM", "DATE/TIME", "BRIGHTNESS/WI-FI: PREVIEW", "MED", "MAX" },
-  { "REGLAGES", "LUMINOSITE", "VOLUME", "ECONOMIE", "SYSTEME", "DATE/HEURE", "LUMIERE/WI-FI: APERCU", "MOYEN", "MAX" },
-  { "EINSTELLUNG", "HELLIGKEIT", "LAUTSTAERKE", "ENERGIESPAREN", "SYSTEM", "DATUM/ZEIT", "HELLIGKEIT/WI-FI: VORSCHAU", "MITTEL", "MAX" },
-  { "IMPOSTAZIONI", "LUMINOSITA", "VOLUME", "RISPARMIO", "SISTEMA", "DATA/ORA", "LUCE/WI-FI: ANTEPRIMA", "MEDIO", "MAX" },
-  { "CONFIGURACAO", "BRILHO", "VOLUME", "ECONOMIA", "SISTEMA", "DATA/HORA", "BRILHO/WI-FI: PREVIA", "MEDIO", "MAX" },
+  { "AJUSTES", "BRILLO", "VOLUMEN", "AHORRO", "SISTEMA", "FECHA/HORA", "DATOS", "BRILLO/WI-FI: VISTA PREVIA", "MEDIO", "MAX" },
+  { "SETTINGS", "BRIGHTNESS", "VOLUME", "POWER SAVE", "SYSTEM", "DATE/TIME", "GAME INFO", "BRIGHTNESS/WI-FI: PREVIEW", "MED", "MAX" },
+  { "REGLAGES", "LUMINOSITE", "VOLUME", "ECONOMIE", "SYSTEME", "DATE/HEURE", "INFOS", "LUMIERE/WI-FI: APERCU", "MOYEN", "MAX" },
+  { "EINSTELLUNG", "HELLIGKEIT", "LAUTSTAERKE", "ENERGIESPAREN", "SYSTEM", "DATUM/ZEIT", "INFOS", "HELLIGKEIT/WI-FI: VORSCHAU", "MITTEL", "MAX" },
+  { "IMPOSTAZIONI", "LUMINOSITA", "VOLUME", "RISPARMIO", "SISTEMA", "DATA/ORA", "INFO", "LUCE/WI-FI: ANTEPRIMA", "MEDIO", "MAX" },
+  { "CONFIGURACAO", "BRILHO", "VOLUME", "ECONOMIA", "SISTEMA", "DATA/HORA", "DADOS", "BRILHO/WI-FI: PREVIA", "MEDIO", "MAX" },
 };
 
 static const SettingsLabels &labels() {
@@ -97,11 +99,11 @@ void SettingsScreen::render() {
     centered(l.preview, 233, 367, 1, UI_TRACK);
     centered("1/2   >", 233, 391, 2, UI_TRACK);
   } else {
-    const char *items[] = { l.system, l.dateTime, "WI-FI" };
-    for (int i = 0; i < 3; ++i) {
-      int x = i == 2 ? 159 : 77 + i * 164;
-      int y = i == 2 ? 240 : 96;
-      bool enabled = i == 1;
+    const char *items[] = { l.system, l.dateTime, "WI-FI", l.info };
+    for (int i = 0; i < 4; ++i) {
+      int x = 77 + (i % 2) * 164;
+      int y = i < 2 ? 96 : 240;
+      bool enabled = i == 1 || i == 3;
       uint16_t ink = enabled ? UI_INK : UI_TRACK;
       gfx->fillRoundRect(x, y, 148, 128, 16, enabled ? UI_WHITE : 0xE73D);
       gfx->drawRoundRect(x, y, 148, 128, 16, ink);
@@ -116,6 +118,9 @@ void SettingsScreen::render() {
         gfx->drawCircle(cx, cy, 23, ink);
         gfx->drawLine(cx, cy, cx, cy - 14, ink);
         gfx->drawLine(cx, cy, cx + 12, cy + 6, ink);
+      } else if (i == 3) {
+        gfx->fillCircle(cx, cy - 15, 4, ink);
+        gfx->fillRoundRect(cx - 4, cy - 6, 8, 28, 3, ink);
       } else {
         gfx->drawLine(cx - 24, cy - 8, cx, cy - 22, ink);
         gfx->drawLine(cx, cy - 22, cx + 24, cy - 8, ink);
@@ -139,6 +144,7 @@ void SettingsScreen::handleTap(int16_t x, int16_t y) {
   }
   if (page == 1) {
     if (x >= 241 && x < 389 && y >= 96 && y < 224) clockSettingsScreen.open(this);
+    else if (x >= 241 && x < 389 && y >= 240 && y < 368) gameInfoScreen.open(this);
     return;
   }
   if (x < 48 || x >= 418) return;

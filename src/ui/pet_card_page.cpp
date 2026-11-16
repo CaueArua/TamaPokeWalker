@@ -70,10 +70,12 @@ void PetCardPageScreen::render() {
   gfx->fillScreen(UI_BG_DAY);
   renderPage();
 
-  int dotsX = PET_CARD_CX - ((PET_CARD_SWIPE_COUNT - 1) * 24) / 2;
-  for (int i = 0; i < PET_CARD_SWIPE_COUNT; i++) {
-    if (i == cardPage) gfx->fillCircle(dotsX + i * 24, 400, 5, UI_INK);
-    else gfx->drawCircle(dotsX + i * 24, 400, 4, UI_INK);
+  if (showPageDots()) {
+    int dotsX = PET_CARD_CX - ((PET_CARD_SWIPE_COUNT - 1) * 24) / 2;
+    for (int i = 0; i < PET_CARD_SWIPE_COUNT; i++) {
+      if (i == cardPage) gfx->fillCircle(dotsX + i * 24, 400, 5, UI_INK);
+      else gfx->drawCircle(dotsX + i * 24, 400, 4, UI_INK);
+    }
   }
   gfx->setTextColor(UI_TRACK);
   gfx->setTextSize(2);

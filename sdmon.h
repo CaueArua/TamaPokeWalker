@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <FS.h>
 
 /**
  * Legacy TPK1 sprite format. PMD/TPK2 is preferred; this fallback is used only
@@ -67,7 +68,7 @@ struct SdThumbs {
 extern SdThumbs thumbs;
 
 /** Mounts the SD card using the configured one-bit SDMMC interface. */
-bool sdBegin();
+void sdBegin(fs::FS &fs);
 /** Handles a supported USB SD-card command and reports whether it was consumed. */
 bool sdSerialCommand(const String &line);
 /** Indicates whether the SD card is mounted and available. */

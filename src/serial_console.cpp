@@ -1,6 +1,9 @@
 #include <Arduino.h>
+#include <stdio.h>
 #include "../audio.h"
+#include "../biome.h"
 #include "../dex.h"
+#include "../game_info.h"
 #include "../imu.h"
 #include "../pet.h"
 #include "../rtcbat.h"
@@ -132,9 +135,13 @@ void handleSerial() {
     }
     Serial.println();
     Serial.println("DONE");
-  } else if (line == "SHINY") {  // Toggle the current pet's shiny state for testing.
-    pet.shiny = !pet.shiny;
-    Serial.printf("shiny=%d\n", pet.shiny);
+  } else if (line == "SHINY") {  // Converts and persists the active pet as shiny.
+    if (!pet.setActiveShiny()) {
+      Serial.println("ERR nao e possivel converter um ovo");
+    } else {
+      markUiDirty();
+      Serial.printf("shiny=%d\n", pet.shiny);
+    }
     Serial.println("DONE");
   } else if (line.startsWith("NICK ")) {
     pet.rename(line.substring(5).c_str());
@@ -198,20 +205,175 @@ void handleSerial() {
       pet.ageMinutes = (uint32_t)(requiredLevel > 0 ? requiredLevel - 1 : 0) * MINUTES_PER_LEVEL;
       pet.fullness = pet.joy = pet.energy = pet.hygiene = 80;
       pet.bond = 60;
-      pet.trAtk = pet.trDef = pet.trSpe = 0;
+      pet.evs[STAT_ATK] = pet.evs[STAT_DEF] = pet.evs[STAT_SPE] = 0;
       uint32_t testEpoch = 1767225600UL + 12UL * 3600UL;
       if (target == 197) testEpoch += 9UL * 3600UL;
       pet.setClock(testEpoch);
       if (source == 236) {
-        if (target == 106) pet.trAtk = 80;
-        else if (target == 107) pet.trDef = 80;
-        else pet.trAtk = pet.trDef = 40;
+        if (target == 106) pet.evs[STAT_ATK] = 80;
+        else if (target == 107) pet.evs[STAT_DEF] = 80;
+        else pet.evs[STAT_ATK] = pet.evs[STAT_DEF] = 40;
       }
       markUiDirty();
       Serial.printf("testevo #%d -> #%d level=%u bond=%u\n", source, target,
                     pet.level(), pet.bond);
     }
     Serial.println("DONE");
+#endif
+  } else if (line.startsWith("GAMEINFO ")) {
+    // Format: GAMEINFO nome|id|regiao|rota (the pipe separates fields, so names may contain spaces).
+    String args = line.substring(9);
+    int a = args.indexOf('|');
+    int b = a < 0 ? -1 : args.indexOf('|', a + 1);
+    int c = b < 0 ? -1 : args.indexOf('|', b + 1);
+    long id = c < 0 ? -1 : args.substring(a + 1, b).toInt();
+    if (c < 0 || id < 0 || id > 999999) {
+      Serial.println("ERR uso: GAMEINFO nome|id|regiao|rota (id 0-999999)");
+    } else {
+      gameInfoSetPlayer(args.substring(0, a).c_str(), (uint32_t)id,
+                        args.substring(b + 1, c).c_str(), args.substring(c + 1).c_str());
+      Serial.printf("nome=%s id=%u regiao=%s rota=%s\n", gameInfo.playerName,
+                    gameInfo.playerId, gameInfo.region, gameInfo.route);
+      Serial.println("DONE");
+    }
+  } else if (line.startsWith("BIOME ")) {
+    // Format: BIOME id (0 to BIOME_COUNT - 1); changes only the biome.
+    long id = line.substring(6).toInt();
+    if (id < 0 || id >= BIOME_COUNT || !gameInfoSetBiome((uint8_t)id)) {
+      Serial.printf("ERR uso: BIOME id (0-%d)\n", BIOME_COUNT - 1);
+    } else {
+      Serial.printf("bioma=%u\n", gameInfo.biome);
+      Serial.println("DONE");
+    }
+  } else if (line == "AVAILCLEAR") {
+    gameInfoClearAvailable();
+    Serial.println("DONE");
+  } else if (line.startsWith("AVAILADD ")) {
+    // Format: AVAILADD dex forma raridade passos
+    unsigned dex = 0, form = 0, rarity = 0, steps = 0;
+    if (sscanf(line.c_str(), "AVAILADD %u %u %u %u", &dex, &form, &rarity, &steps) != 4 ||
+        dex < 1 || dex > DEX_COUNT || form > 255 || rarity > 255) {
+      Serial.println("ERR uso: AVAILADD dex forma raridade passos");
+    } else {
+      int8_t slot = gameInfoAddAvailable((uint16_t)dex, (uint8_t)form, (uint8_t)rarity, steps);
+      if (slot < 0) {
+        Serial.println("ERR lista cheia (30 posicoes); use AVAILCLEAR");
+      } else {
+        Serial.printf("available[%d] = #%u %s forma=%u raridade=%u passos=%u\n", slot, dex,
+                      DEX_TBL[dex].name, form, rarity, steps);
+        Serial.println("DONE");
+      }
+    }
+  } else if (line.startsWith("IVSET ")) {
+    // Format: IVSET alvo nature iv0 iv1 iv2 iv3 iv4 iv5 (alvo: -1 all, 0 active, 1-6 party slot).
+    int target = 0;
+    unsigned nat = 0, ivv[STAT_COUNT] = { 0 };
+    if (sscanf(line.c_str(), "IVSET %d %u %u %u %u %u %u %u", &target, &nat, &ivv[0], &ivv[1],
+               &ivv[2], &ivv[3], &ivv[4], &ivv[5]) != 8 ||
+        target < -1 || target > PARTY_SIZE || nat >= NATURE_COUNT) {
+      Serial.printf("ERR uso: IVSET alvo(-1|0-%d) nature(0-%d) iv0..iv5(0-31)\n", PARTY_SIZE, NATURE_COUNT - 1);
+    } else {
+      uint8_t newIvs[STAT_COUNT];
+      bool ok = true;
+      for (uint8_t i = 0; i < STAT_COUNT; i++) {
+        if (ivv[i] > 31) ok = false;
+        newIvs[i] = (uint8_t)ivv[i];
+      }
+      if (!ok) {
+        Serial.println("ERR IV fora de 0-31");
+      } else {
+        int8_t slot = target < 0 ? -1 : (target == 0 ? (int8_t)pet.activePartySlot : (int8_t)(target - 1));
+        int changed = pet.setPartyStats(slot, newIvs, (uint8_t)nat);
+        if (changed == 0) {
+          Serial.println("ERR nenhum pokemon alterado (slot vazio ou ovo)");
+        } else {
+          Serial.printf("alterados=%d nature=%s ivs=%u/%u/%u/%u/%u/%u\n", changed, natureName((uint8_t)nat),
+                        newIvs[0], newIvs[1], newIvs[2], newIvs[3], newIvs[4], newIvs[5]);
+          Serial.println("DONE");
+        }
+      }
+    }
+  } else if (line.startsWith("EVSET ")) {
+    // Format: EVSET ev0 ev1 ev2 ev3 ev4 ev5 (active pet; each 0-252, total <= 510).
+    unsigned evv[STAT_COUNT] = { 0 };
+    if (sscanf(line.c_str(), "EVSET %u %u %u %u %u %u", &evv[0], &evv[1], &evv[2], &evv[3], &evv[4],
+               &evv[5]) != 6) {
+      Serial.println("ERR uso: EVSET ev0..ev5 (0-252 cada, total 0-510)");
+    } else {
+      uint8_t newEvs[STAT_COUNT];
+      for (uint8_t i = 0; i < STAT_COUNT; i++) newEvs[i] = (uint8_t)(evv[i] > 255 ? 255 : evv[i]);
+      if (!pet.setActiveEvs(newEvs)) {
+        Serial.println("ERR EV fora dos limites (0-252 cada, total 510) ou ovo");
+      } else {
+        markUiDirty();
+        Serial.printf("evs=%u/%u/%u/%u/%u/%u\n", pet.evs[0], pet.evs[1], pet.evs[2], pet.evs[3], pet.evs[4],
+                      pet.evs[5]);
+        Serial.println("DONE");
+      }
+    }
+  } else if (line.startsWith("SPECIES ")) {
+    // Format: SPECIES natNum (National Dex number); maps it to the DEX_TBL index and redraws the screen.
+    long natNum = line.substring(8).toInt();
+    int dex = 0;
+    for (int i = 1; i <= DEX_COUNT && natNum > 0; i++) {
+      if (DEX_TBL[i].natNum == natNum) {
+        dex = i;
+        break;
+      }
+    }
+    if (dex == 0) {
+      Serial.println("ERR natNum nao encontrado em DEX_TBL");
+    } else if (!pet.setActiveSpecies((int16_t)dex)) {
+      Serial.println("ERR nao foi possivel alterar (ovo)");
+    } else {
+      markUiDirty();
+      Serial.printf("natNum=%ld speciesId=%d %s\n", natNum, dex, DEX_TBL[dex].name);
+      Serial.println("DONE");
+    }
+  } else if (line.startsWith("LEVEL ")) {
+    // Format: LEVEL nivel (1-100); sets the active pet's level and redraws the screen.
+    long lv = line.substring(6).toInt();
+    if (lv < 1 || lv > 100) {
+      Serial.println("ERR uso: LEVEL nivel(1-100)");
+    } else if (!pet.setActiveLevel((uint8_t)lv)) {
+      Serial.println("ERR nao foi possivel alterar (ovo)");
+    } else {
+      markUiDirty();
+      Serial.printf("level=%u\n", pet.level());
+      Serial.println("DONE");
+    }
+  } else if (line.startsWith("STAT ")) {
+    // Format: STAT HP|ATK|DEF|SPA|SPD|SPE (active pet); prints base, IV, EV, level, nature effect and final value.
+    static const char *const kStatNames[STAT_COUNT] = { "HP", "ATK", "DEF", "SPA", "SPD", "SPE" };
+    String arg = line.substring(5);
+    arg.trim();
+    arg.toUpperCase();
+    int idx = -1;
+    for (uint8_t i = 0; i < STAT_COUNT; i++)
+      if (arg == kStatNames[i]) idx = i;
+    StatBreakdown b;
+    if (idx < 0) {
+      Serial.println("ERR uso: STAT HP|ATK|DEF|SPA|SPD|SPE");
+    } else if (!pet.statBreakdown((uint8_t)idx, b)) {
+      Serial.println("ERR nao disponivel (ovo)");
+    } else {
+      const char *efeito = b.natureMod > 0 ? "sobe" : (b.natureMod < 0 ? "desce" : "neutra");
+      Serial.printf("%s base=%u iv=%u ev=%u level=%u nature=%s(%s) final=%u\n", kStatNames[idx], b.base, b.iv,
+                    b.ev, b.level, natureName(pet.nature), efeito, b.finalValue);
+      Serial.println("DONE");
+    }
+  } else if (line.startsWith("BOND ")) {
+    // Format: BOND valor (0-255); sets the active pet's affection and redraws the screen.
+    long value = line.substring(5).toInt();
+    if (value < 0 || value > 255) {
+      Serial.println("ERR uso: BOND valor(0-255)");
+    } else {
+      pet.setActiveBond((uint8_t)value);
+      markUiDirty();
+      Serial.printf("bond=%u\n", pet.bond);
+      Serial.println("DONE");
+    }
+#ifdef TAMAPOKE_LOCAL_TEST
   } else if (line == "CAUGHT") {
     Serial.printf("caught %u/%u:", pet.caughtCount(), DEX_COUNT);
     for (int i = 1; i <= DEX_COUNT; i++)
@@ -266,10 +428,12 @@ void handleSerial() {
                   pet.speciesId, pet.level(), pet.fullness, pet.joy, pet.energy,
                   pet.hygiene, pet.careMistakes, sdReady, mon.loaded,
                   batPercent(), usbPresent(), rtcEpoch());
-    Serial.printf("peso=%u fue=%u def=%u vel=%u genes=%u/%u/%u tr=%u/%u/%u baya=%d\n",
+    Serial.printf("peso=%u fue=%u def=%u vel=%u nat=%s ivs=%u/%u/%u/%u/%u/%u evs=%u/%u/%u/%u/%u/%u baya=%d\n",
                   pet.weight, pet.atkStat(), pet.defStat(), pet.speStat(),
-                  pet.geneAtk, pet.geneDef, pet.geneSpe,
-                  pet.trAtk, pet.trDef, pet.trSpe, pet.berryKnown);
+                  natureName(pet.nature),
+                  pet.ivs[0], pet.ivs[1], pet.ivs[2], pet.ivs[3], pet.ivs[4], pet.ivs[5],
+                  pet.evs[0], pet.evs[1], pet.evs[2], pet.evs[3], pet.evs[4], pet.evs[5],
+                  pet.berryKnown);
     Serial.printf("shiny=%d streak=%u/%u bond=%u medals=0x%X(%u) nick=%s\n",
                   pet.shiny, pet.streak, pet.bestStreak, pet.bond, pet.medals,
                   pet.totalMedals, pet.nick);
