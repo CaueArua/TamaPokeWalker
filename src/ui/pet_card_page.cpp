@@ -59,7 +59,7 @@ void openPetCardSubpage(uint8_t page) {
   setScreen(petCardScreenForPage(page));
 }
 
-static void closePetCardPages() {
+void closePetCardPages() {
   Screen *target = cardReturnScreen;
   cardReturnScreen = nullptr;
   setScreen(target);

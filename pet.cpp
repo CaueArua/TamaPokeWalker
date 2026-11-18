@@ -9,12 +9,17 @@
 namespace {
 constexpr uint32_t BACKUP_MAGIC = 0x314B4254UL; // TBK1
 constexpr uint16_t BACKUP_VERSION = 3;
+/** Level implied by an age-based save; used once when migrating to XP. */
+uint8_t levelFromAge(uint32_t age) {
+  uint32_t raw = 1UL + age / MINUTES_PER_LEVEL;
+  return raw > 100UL ? 100 : (uint8_t)raw;
+}
 struct __attribute__((packed)) PetBackup {
   uint32_t magic; uint16_t version, length; uint32_t checksum;
   uint8_t fullness, joy, energy, hygiene, poops, weight; uint8_t evs[STAT_COUNT];
-  uint8_t berryKnown, shiny, eggShiny, starterPick, eggTaps, careMistakes, lastEnd, bond, collectionFrame, dailyGoalDone, expeditionRewardItem, expeditionSite, hoennSealMask, stepDailyRewardMask, stepMilestoneMask, pendingStepRewardMask, shakeCountToday, walkJoyToday, walkJoyHour, walkBondToday, evoDeclinedLv;
+  uint8_t berryKnown, shiny, eggShiny, starterPick, eggTaps, careMistakes, lastEnd, bond, collectionFrame, dailyGoalDone, expeditionRewardItem, expeditionSite, hoennSealMask, stepDailyRewardMask, stepMilestoneMask, pendingStepRewardMask, shakeCountToday, walkJoyToday, walkJoyHour, walkBondToday, evoDismissed;
   int16_t speciesId, eggTarget;
-  uint32_t ageMinutes, lastSeenEpoch, lastCareDay, lastPetInteractMinute, dailyGoalDay, expeditionEndEpoch, stepDay, stepsToday, stepsTotal, lastMorningDay, shakeDay, walkDay, walkHour, evoDeclinedAge;
+  uint32_t ageMinutes, lastSeenEpoch, lastCareDay, lastPetInteractMinute, dailyGoalDay, expeditionEndEpoch, stepDay, stepsToday, stepsTotal, lastMorningDay, shakeDay, walkDay, walkHour, reservedEvo;
   uint16_t streak, bestStreak, medals, totalMedals, lastMilestone, gameHi, strHi, catchHi, memoHi, cleanHi, typeHi, battleWins, battleLosses, battleStreak, bestBattleStreak, dexRewardMask;
   uint8_t dailyGoalType[DAILY_GOAL_COUNT], dailyGoalProgress[DAILY_GOAL_COUNT], itemCounts[EXP_ITEM_COUNT];
   uint8_t dexReg[DEX_BITMAP_BYTES], dexShinyReg[DEX_BITMAP_BYTES], dexCaught[DEX_BITMAP_BYTES]; char nick[12];
@@ -94,8 +99,7 @@ void Pet::newEgg() {
   poops = 0;
   ageMinutes = 0;
   lastPetInteractMinute = 0;
-  evoDeclinedLv = 0;
-  evoDeclinedAge = 0;
+  evoDismissed = false;
   farDeclinedAge = 0;
   careMistakes = 0;
   mistakeCooldown = 0;
@@ -198,6 +202,7 @@ bool Pet::promoteNextFromParty() {
     memcpy(evs, next.evs, sizeof(evs));
     bond = next.bond;
     xp = next.xp;
+    evoDismissed = next.evoDismissed;
     fullness = next.fullness;
     joy = next.joy;
     energy = next.energy;
@@ -224,6 +229,22 @@ bool Pet::promoteNextFromParty() {
 
 bool Pet::update(uint32_t nowMs) {
   ensureStepDay();
+  // Awake time earns 1 XP per XP_INTERVAL_MS; sleep, eggs, and ceremonies earn nothing.
+  const uint32_t elapsedMs = xpClockArmed ? nowMs - xpLastMs : 0;
+  xpLastMs = nowMs;
+  xpClockArmed = true;
+  bool xpGained = false;
+  if (!sleeping && !isEgg() && ceremony == CER_NONE) {
+    xpCarryMs += elapsedMs;
+    const uint32_t gained = xpCarryMs / XP_INTERVAL_MS;
+    xpCarryMs %= XP_INTERVAL_MS;
+    if (gained) {
+      addXp(gained);
+      xpGained = true;  // Lets the progress card redraw between game ticks.
+    }
+  } else {
+    xpCarryMs = 0;
+  }
   // End the ceremony and start the next egg when needed.
   if (ceremony != CER_NONE && !deadlineActive(nowMs, ceremonyUntil)) {
     uint8_t finishedCer = ceremony;
@@ -236,7 +257,29 @@ bool Pet::update(uint32_t nowMs) {
   }
   uint32_t ticks = tickSched.consume(nowMs);
   for (uint32_t i = 0; i < ticks; i++) tick();
-  return ticks > 0;
+  return ticks > 0 || xpGained;
+}
+
+GrowthRate growthRateOfDex(int16_t dex) {
+  if (dex < 1 || dex > DEX_COUNT) return GrowthRate::MediumFast;
+  const char *name = nullptr;
+  nationalDexGetGrowthRate(DEX_TBL[dex].natNum, &name);
+  return growthRateFromName(name);
+}
+
+GrowthRate Pet::growthRate() const {
+  return growthRateOfDex(speciesId);
+}
+
+void Pet::addXp(uint32_t amount) {
+  const long long cap = xpCapFor(growthRate());
+  if (isEgg() || (long long)xp >= cap) return;
+  const uint8_t before = level();
+  const long long total = (long long)xp + amount;
+  xp = (uint32_t)(total > cap ? cap : total);
+  if (level() == before) return;
+  if (!sleeping) sfxPlay(SFX_LEVEL);
+  checkMedals();
 }
 
 void Pet::tick() {
@@ -263,9 +306,8 @@ void Pet::tick() {
     return;
   }
 
-  if (ageMinutes % MINUTES_PER_LEVEL == 0) sfxPlay(SFX_LEVEL);  // Level up while awake.
-
   fullness = clamp100(fullness - nightFoodDrop(lastSeenEpoch));
+
   energy = clamp100(energy - 1);
   if (fullness > 40 && poops < 3 && random(100) < 15) poops++;
 
@@ -341,8 +383,8 @@ size_t Pet::exportBackup(uint8_t *out, size_t capacity) const {
   if (!out || capacity < sizeof(PetBackup)) return 0;
   PetBackup b = {}; b.magic=BACKUP_MAGIC; b.version=BACKUP_VERSION; b.length=sizeof(b);
   b.fullness=fullness;b.joy=joy;b.energy=energy;b.hygiene=hygiene;b.poops=poops;b.weight=weight;memcpy(b.evs,evs,sizeof(b.evs));
-  b.berryKnown=berryKnown;b.shiny=shiny;b.eggShiny=eggShiny;b.starterPick=starterPick;b.eggTaps=eggTaps;b.careMistakes=careMistakes;b.lastEnd=lastEnd;b.bond=bond;b.collectionFrame=collectionFrame;b.dailyGoalDone=dailyGoalDone;b.expeditionRewardItem=expeditionRewardItem;b.expeditionSite=expeditionSite;b.hoennSealMask=hoennSealMask;b.stepDailyRewardMask=stepDailyRewardMask;b.stepMilestoneMask=stepMilestoneMask;b.pendingStepRewardMask=pendingStepRewardMask;b.shakeCountToday=shakeCountToday;b.walkJoyToday=walkJoyToday;b.walkJoyHour=walkJoyHour;b.walkBondToday=walkBondToday;b.evoDeclinedLv=evoDeclinedLv;
-  b.speciesId=speciesId;b.eggTarget=eggTarget;b.ageMinutes=ageMinutes;b.lastSeenEpoch=lastSeenEpoch;b.lastCareDay=lastCareDay;b.lastPetInteractMinute=lastPetInteractMinute;b.dailyGoalDay=dailyGoalDay;b.expeditionEndEpoch=expeditionEndEpoch;b.stepDay=stepDay;b.stepsToday=stepsToday;b.stepsTotal=stepsTotal;b.lastMorningDay=lastMorningDay;b.shakeDay=shakeDay;b.walkDay=walkDay;b.walkHour=walkHour;b.evoDeclinedAge=evoDeclinedAge;
+  b.berryKnown=berryKnown;b.shiny=shiny;b.eggShiny=eggShiny;b.starterPick=starterPick;b.eggTaps=eggTaps;b.careMistakes=careMistakes;b.lastEnd=lastEnd;b.bond=bond;b.collectionFrame=collectionFrame;b.dailyGoalDone=dailyGoalDone;b.expeditionRewardItem=expeditionRewardItem;b.expeditionSite=expeditionSite;b.hoennSealMask=hoennSealMask;b.stepDailyRewardMask=stepDailyRewardMask;b.stepMilestoneMask=stepMilestoneMask;b.pendingStepRewardMask=pendingStepRewardMask;b.shakeCountToday=shakeCountToday;b.walkJoyToday=walkJoyToday;b.walkJoyHour=walkJoyHour;b.walkBondToday=walkBondToday;b.evoDismissed=evoDismissed?1:0;
+  b.speciesId=speciesId;b.eggTarget=eggTarget;b.ageMinutes=ageMinutes;b.lastSeenEpoch=lastSeenEpoch;b.lastCareDay=lastCareDay;b.lastPetInteractMinute=lastPetInteractMinute;b.dailyGoalDay=dailyGoalDay;b.expeditionEndEpoch=expeditionEndEpoch;b.stepDay=stepDay;b.stepsToday=stepsToday;b.stepsTotal=stepsTotal;b.lastMorningDay=lastMorningDay;b.shakeDay=shakeDay;b.walkDay=walkDay;b.walkHour=walkHour;b.reservedEvo=0;
   b.streak=streak;b.bestStreak=bestStreak;b.medals=medals;b.totalMedals=totalMedals;b.lastMilestone=lastMilestone;b.gameHi=gameHi;b.strHi=strHi;b.catchHi=catchHi;b.memoHi=memoHi;b.cleanHi=cleanHi;b.typeHi=typeHi;b.battleWins=battleWins;b.battleLosses=battleLosses;b.battleStreak=battleStreak;b.bestBattleStreak=bestBattleStreak;b.dexRewardMask=dexRewardMask;
   memcpy(b.dailyGoalType,dailyGoalType,sizeof(b.dailyGoalType));memcpy(b.dailyGoalProgress,dailyGoalProgress,sizeof(b.dailyGoalProgress));memcpy(b.itemCounts,itemCounts,sizeof(b.itemCounts));memcpy(b.dexReg,dexReg,sizeof(b.dexReg));memcpy(b.dexShinyReg,dexShinyReg,sizeof(b.dexShinyReg));memcpy(b.dexCaught,dexCaught,sizeof(b.dexCaught));memcpy(b.nick,nick,sizeof(b.nick));
   b.expeditionMinutes=expeditionMinutes; b.expeditionSteps=expeditionSteps; b.expeditionBonusItem=expeditionBonusItem;
@@ -382,8 +424,8 @@ bool Pet::importBackup(const uint8_t *data, size_t length) {
   if (b.magic!=BACKUP_MAGIC || b.version!=BACKUP_VERSION || b.length!=sizeof(b) || sum!=backupChecksum(reinterpret_cast<const uint8_t*>(&b),sizeof(b)) || b.speciesId < -1 || b.speciesId > DEX_COUNT || b.eggTarget < 1 || b.eggTarget > DEX_COUNT || (b.expeditionRewardItem != EXP_ITEM_NONE && b.expeditionRewardItem >= EXP_ITEM_COUNT) || (b.expeditionSite != EXP_SITE_NONE && b.expeditionSite >= EXPEDITION_SITE_COUNT)) return false;
   expeditionMinutes=b.expeditionMinutes; expeditionSteps=b.expeditionSteps; expeditionBonusItem=b.expeditionBonusItem;
   prefs.putBool("init", true);
-  fullness=b.fullness;joy=b.joy;energy=b.energy;hygiene=b.hygiene;poops=b.poops;weight=b.weight;memcpy(evs,b.evs,sizeof(evs));nature=NATURE_HARDY;for(uint8_t i=0;i<STAT_COUNT;i++) ivs[i]=10;berryKnown=b.berryKnown;shiny=b.shiny;eggShiny=b.eggShiny;starterPick=b.starterPick;eggTaps=b.eggTaps;careMistakes=b.careMistakes;lastEnd=b.lastEnd;bond=b.bond;collectionFrame=b.collectionFrame;dailyGoalDone=b.dailyGoalDone;expeditionRewardItem=b.expeditionRewardItem;expeditionSite=b.expeditionSite;hoennSealMask=b.hoennSealMask & 7;stepDailyRewardMask=b.stepDailyRewardMask;stepMilestoneMask=b.stepMilestoneMask;pendingStepRewardMask=b.pendingStepRewardMask;shakeCountToday=b.shakeCountToday;walkJoyToday=b.walkJoyToday;walkJoyHour=b.walkJoyHour;walkBondToday=b.walkBondToday;evoDeclinedLv=b.evoDeclinedLv;
-  speciesId=b.speciesId;eggTarget=b.eggTarget;ageMinutes=b.ageMinutes;lastSeenEpoch=b.lastSeenEpoch;lastCareDay=b.lastCareDay;lastPetInteractMinute=b.lastPetInteractMinute;dailyGoalDay=b.dailyGoalDay;expeditionEndEpoch=b.expeditionEndEpoch;stepDay=b.stepDay;stepsToday=b.stepsToday;stepsTotal=b.stepsTotal;lastMorningDay=b.lastMorningDay;shakeDay=b.shakeDay;walkDay=b.walkDay;walkHour=b.walkHour;evoDeclinedAge=b.evoDeclinedAge;streak=b.streak;bestStreak=b.bestStreak;medals=b.medals;totalMedals=b.totalMedals;lastMilestone=b.lastMilestone;gameHi=b.gameHi;strHi=b.strHi;catchHi=b.catchHi;memoHi=b.memoHi;cleanHi=b.cleanHi;typeHi=b.typeHi;battleWins=b.battleWins;battleLosses=b.battleLosses;battleStreak=b.battleStreak;bestBattleStreak=b.bestBattleStreak;dexRewardMask=b.dexRewardMask;
+  fullness=b.fullness;joy=b.joy;energy=b.energy;hygiene=b.hygiene;poops=b.poops;weight=b.weight;memcpy(evs,b.evs,sizeof(evs));nature=NATURE_HARDY;for(uint8_t i=0;i<STAT_COUNT;i++) ivs[i]=10;berryKnown=b.berryKnown;shiny=b.shiny;eggShiny=b.eggShiny;starterPick=b.starterPick;eggTaps=b.eggTaps;careMistakes=b.careMistakes;lastEnd=b.lastEnd;bond=b.bond;collectionFrame=b.collectionFrame;dailyGoalDone=b.dailyGoalDone;expeditionRewardItem=b.expeditionRewardItem;expeditionSite=b.expeditionSite;hoennSealMask=b.hoennSealMask & 7;stepDailyRewardMask=b.stepDailyRewardMask;stepMilestoneMask=b.stepMilestoneMask;pendingStepRewardMask=b.pendingStepRewardMask;shakeCountToday=b.shakeCountToday;walkJoyToday=b.walkJoyToday;walkJoyHour=b.walkJoyHour;walkBondToday=b.walkBondToday;evoDismissed=(b.evoDismissed==1);
+  speciesId=b.speciesId;eggTarget=b.eggTarget;ageMinutes=b.ageMinutes;lastSeenEpoch=b.lastSeenEpoch;lastCareDay=b.lastCareDay;lastPetInteractMinute=b.lastPetInteractMinute;dailyGoalDay=b.dailyGoalDay;expeditionEndEpoch=b.expeditionEndEpoch;stepDay=b.stepDay;stepsToday=b.stepsToday;stepsTotal=b.stepsTotal;lastMorningDay=b.lastMorningDay;shakeDay=b.shakeDay;walkDay=b.walkDay;walkHour=b.walkHour;streak=b.streak;bestStreak=b.bestStreak;medals=b.medals;totalMedals=b.totalMedals;lastMilestone=b.lastMilestone;gameHi=b.gameHi;strHi=b.strHi;catchHi=b.catchHi;memoHi=b.memoHi;cleanHi=b.cleanHi;typeHi=b.typeHi;battleWins=b.battleWins;battleLosses=b.battleLosses;battleStreak=b.battleStreak;bestBattleStreak=b.bestBattleStreak;dexRewardMask=b.dexRewardMask;
   memcpy(dailyGoalType,b.dailyGoalType,sizeof(dailyGoalType));memcpy(dailyGoalProgress,b.dailyGoalProgress,sizeof(dailyGoalProgress));memcpy(itemCounts,b.itemCounts,sizeof(itemCounts));memcpy(dexReg,b.dexReg,sizeof(dexReg));memcpy(dexShinyReg,b.dexShinyReg,sizeof(dexShinyReg));memcpy(dexCaught,b.dexCaught,sizeof(dexCaught));memcpy(nick,b.nick,sizeof(nick));nick[sizeof(nick)-1]=0;ceremony=CER_NONE;if (collectionFrame >= unlockedCollectionFrameCount()) collectionFrame=0;save();return true;
 }
 
@@ -897,8 +939,7 @@ void Pet::hatch() {
   newMedal = 0;
   nick[0] = 0;
   lastPetInteractMinute = 0;
-  evoDeclinedLv = 0;
-  evoDeclinedAge = 0;
+  evoDismissed = false;
   farDeclinedAge = 0;
   registerSpecies(speciesId);  // A newly hatched pet is registered in the Dex.
   checkMedals();     // Check medals in case it hatches in final form.
@@ -916,10 +957,15 @@ static uint8_t evolutionNeedLevel(const Pet &pet, const EvolutionRule &rule) {
   return (uint8_t)need;
 }
 
+/** Level and non-stat conditions of a rule are checked against XP, so evolution follows the same source as the displayed level. */
+static bool evolutionLevelMet(const Pet &pet, uint8_t need) {
+  return pet.xp >= (uint32_t)getTotalExp(pet.growthRate(), need);
+}
+
 /** Checks whether level and all non-stat conditions of a rule are satisfied. */
 static bool evolutionRuleReady(const Pet &pet, const EvolutionRule &rule) {
   uint8_t need = evolutionNeedLevel(pet, rule);
-  if (pet.level() < need) return false;
+  if (!evolutionLevelMet(pet, need)) return false;
   switch (rule.condition) {
     case EVO_BOND:
       return pet.bond >= 50;
@@ -1008,7 +1054,7 @@ bool Pet::evolutionLevelReached() const {
   for (uint16_t i = 0; i < EVOLUTION_RULE_COUNT; i++) {
     const EvolutionRule &rule = EVOLUTION_RULES[i];
     if (rule.from != speciesId) continue;
-    if (level() >= evolutionNeedLevel(*this, rule)) return true;
+    if (evolutionLevelMet(*this, evolutionNeedLevel(*this, rule))) return true;
   }
   return false;
 }
@@ -1018,7 +1064,7 @@ bool Pet::evolutionNeedsMoreBond() const {
   for (uint16_t i = 0; i < EVOLUTION_RULE_COUNT; i++) {
     const EvolutionRule &rule = EVOLUTION_RULES[i];
     if (rule.from != speciesId) continue;
-    if (level() < evolutionNeedLevel(*this, rule)) continue;
+    if (!evolutionLevelMet(*this, evolutionNeedLevel(*this, rule))) continue;
     if (rule.condition == EVO_BOND || rule.condition == EVO_DAY_BOND ||
         rule.condition == EVO_NIGHT_BOND)
       return true;
@@ -1038,31 +1084,28 @@ bool Pet::canEvolveNow() const {
 }
 
 bool Pet::wantEvolveButton() const {
-  if (isEgg() || sleeping || evolving() || ceremony != CER_NONE) return false;
-  if (level() < evoDeclinedLv && ageMinutes < evoDeclinedAge) return false;
+  if (isEgg() || sleeping || evolving() || ceremony != CER_NONE || evoDismissed) return false;
   return canEvolveNow(); // Show the button only when level, bond, and care stats permit evolution.
 }
 
 void Pet::declineEvolve() {
-  if (level() >= 100) {
-    evoDeclinedLv = 100;
-    evoDeclinedAge = ageMinutes + 1440;
-  } else {
-    evoDeclinedLv = level();
-  }
+  evoDismissed = true;
   save();
+  saveParty();
 }
 
-void Pet::resetEvolutionDeferral() {
-  evoDeclinedLv = 0;
-  evoDeclinedAge = 0;
+void Pet::resetEvoDismissed() {
+  evoDismissed = false;
 }
 
 void Pet::evolveTo(int16_t target) {
   if (!canEvolveTo(target)) return;
+  // Keep the current level: the new species may use a different growth group.
+  const uint8_t lvBefore = level();
   prevSpeciesId = speciesId;
   speciesId = target;
-  registerSpecies(speciesId);
+  xp = (uint32_t)getTotalExp(growthRate(), lvBefore);
+  evoDismissed = false;
   sfxPlay(SFX_EVOLVE);
   evolveUntil = millis() + EVOLVE_ANIM_MS;
   save();
@@ -1815,8 +1858,7 @@ void Pet::save() {
   prefs.putUChar("wjoy", walkJoyToday);
   prefs.putUChar("wjhr", walkJoyHour);
   prefs.putUChar("wbond", walkBondToday);
-  prefs.putUChar("edlv", evoDeclinedLv);
-  prefs.putUInt("edage", evoDeclinedAge);
+  prefs.putBool("evod", evoDismissed);
   prefs.putString("nick", nick);
   saveParty();
 }
@@ -1868,7 +1910,11 @@ void Pet::load() {
   lastCareDay = prefs.getUInt("cday", 0);
   bond = prefs.getUChar("bond", 0);
   xp = prefs.getUInt("xp", 0);
-  if (xp > PET_XP_MAX) xp = PET_XP_MAX;
+  if (!prefs.getBool("xpv", false)) {  // One-time migration from the old age-based level.
+    xp = (uint32_t)getTotalExp(growthRate(), levelFromAge(ageMinutes));
+    prefs.putBool("xpv", true);
+  }
+  if ((long long)xp > xpCapFor(growthRate())) xp = (uint32_t)xpCapFor(growthRate());
   medals = prefs.getUShort("medal", 0);
   totalMedals = prefs.getUShort("tmedal", 0);
   lastMilestone = prefs.getUShort("mstone", 0);
@@ -1928,8 +1974,7 @@ void Pet::load() {
   walkJoyToday = prefs.getUChar("wjoy", 0);
   walkJoyHour = prefs.getUChar("wjhr", 0);
   walkBondToday = prefs.getUChar("wbond", 0);
-  evoDeclinedLv = prefs.getUChar("edlv", 0);
-  evoDeclinedAge = prefs.getUInt("edage", 0);
+  evoDismissed = prefs.getBool("evod", false);
   if (expeditionEndEpoch == 0 || expeditionRewardItem >= EXP_ITEM_COUNT) {
     expeditionEndEpoch = 0;
     expeditionRewardItem = EXP_ITEM_NONE;
@@ -1970,6 +2015,7 @@ void Pet::syncToParty() {
   s.careMistakes = careMistakes;
   s.medals = medals;
   s.berryKnown = berryKnown;
+  s.evoDismissed = evoDismissed;
   s.xp = xp;
 }
 
@@ -1994,6 +2040,7 @@ bool Pet::switchPartySlot(uint8_t slot) {
   memcpy(evs, next.evs, sizeof(evs));
   bond = next.bond;
   xp = next.xp;
+  evoDismissed = next.evoDismissed;
   fullness = next.fullness;
   joy = next.joy;
   energy = next.energy;
@@ -2019,7 +2066,7 @@ int8_t Pet::addToParty(int16_t dex, bool isShiny, uint8_t lv) {
       s = PartySlot(); // Reset the slot to its default values.
       s.speciesId = dex;
       s.shiny = isShiny;
-      s.ageMinutes = (uint32_t)(lv > 1 ? lv - 1 : 0) * MINUTES_PER_LEVEL;
+      s.xp = (uint32_t)getTotalExp(growthRateOfDex(dex), lv);
       saveParty();
       return (int8_t)i;
     }
@@ -2042,7 +2089,7 @@ bool Pet::replacePartySlot(uint8_t slot, int16_t dex, bool isShiny, uint8_t lv) 
   s = PartySlot(); // Clear the previous slot data.
   s.speciesId = dex;
   s.shiny = isShiny;
-  s.ageMinutes = (uint32_t)(lv > 1 ? lv - 1 : 0) * MINUTES_PER_LEVEL;
+  s.xp = (uint32_t)getTotalExp(growthRateOfDex(dex), lv);
 
   // If replacing the active pet, apply the new member to active state immediately.
   if (slot == activePartySlot) {
@@ -2055,7 +2102,8 @@ bool Pet::replacePartySlot(uint8_t slot, int16_t dex, bool isShiny, uint8_t lv) 
     memcpy(ivs, s.ivs, sizeof(ivs));
     memcpy(evs, s.evs, sizeof(evs));
     bond = 0;
-    xp = 0;
+    xp = s.xp;
+    evoDismissed = s.evoDismissed;
     fullness = joy = energy = 80;
     hygiene = 100;
     weight = 0;
@@ -2139,7 +2187,7 @@ bool Pet::setActiveSpecies(int16_t dex) {
 
 bool Pet::setActiveLevel(uint8_t lv) {
   if (isEgg() || lv < 1 || lv > 100) return false;
-  ageMinutes = (uint32_t)(lv - 1) * MINUTES_PER_LEVEL;
+  xp = (uint32_t)getTotalExp(growthRate(), lv);
   save();
   saveParty();
   return true;
@@ -2216,9 +2264,24 @@ void Pet::loadParty() {
     prefs.putBytes("pData", party, sizeof(party));
     len = sizeof(party);
   }
+  if (len == sizeof(party) && !prefs.getBool("xpvp", false)) {  // One-time migration of party levels to XP.
+    for (uint8_t i = 0; i < PARTY_SIZE; i++) {
+      if (party[i].speciesId <= 0) continue;
+      party[i].xp = (uint32_t)getTotalExp(growthRateOfDex(party[i].speciesId), levelFromAge(party[i].ageMinutes));
+    }
+    prefs.putBytes("pData", party, sizeof(party));
+    prefs.putBool("xpvp", true);
+  }
+  if (len == sizeof(party) && !prefs.getBool("evodp", false)) {  // Old blobs have garbage in the padding byte that now holds evoDismissed.
+    for (uint8_t i = 0; i < PARTY_SIZE; i++) party[i].evoDismissed = false;
+    prefs.putBytes("pData", party, sizeof(party));
+    prefs.putBool("evodp", true);
+  }
   if (len != sizeof(party)) {
     memset(party, 0, sizeof(party));
     syncToParty(); // Initialize slot zero with the current pet.
+    prefs.putBool("xpvp", true);  // A fresh party already stores XP.
+    prefs.putBool("evodp", true);
   }
 }
 

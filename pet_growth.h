@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <string.h>
 
 /** Experience growth groups used by the main-series games. */
 enum class GrowthRate { Fast, MediumFast, MediumSlow, Slow, Erratic, Fluctuating };
@@ -29,6 +30,29 @@ inline long long getTotalExp(GrowthRate group, int level) {
       return (L * L * L * ((L / 2) + 32)) / 50;
   }
   return 0;
+}
+
+/** Returns the growth group for a National Dex name such as "medium-fast". Unknown names give MediumFast. */
+inline GrowthRate growthRateFromName(const char *name) {
+  if (!name) return GrowthRate::MediumFast;
+  if (!strcmp(name, "slow")) return GrowthRate::Slow;
+  if (!strcmp(name, "medium-slow")) return GrowthRate::MediumSlow;
+  if (!strcmp(name, "fast")) return GrowthRate::Fast;
+  if (!strcmp(name, "erratic")) return GrowthRate::Erratic;
+  if (!strcmp(name, "fluctuating")) return GrowthRate::Fluctuating;
+  return GrowthRate::MediumFast;
+}
+
+/** Highest level (1..100) whose threshold does not exceed xp. */
+inline uint8_t levelFromXp(GrowthRate group, long long xp) {
+  uint8_t level = 1;
+  for (int L = 2; L <= 100 && getTotalExp(group, L) <= xp; L++) level = (uint8_t)L;
+  return level;
+}
+
+/** Experience needed to reach the level cap (L100) of a group. */
+inline long long xpCapFor(GrowthRate group) {
+  return getTotalExp(group, 100);
 }
 
 /**

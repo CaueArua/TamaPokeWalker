@@ -8,6 +8,8 @@
 
 // One game tick is one in-game minute. Lower this value to accelerate testing.
 #define PET_TICK_MS 60000UL
+// Awake time per 1 XP.
+#define XP_INTERVAL_MS 15000UL
 // In-game minutes per level. Lower this value to accelerate evolution testing.
 #define MINUTES_PER_LEVEL 60
 #define EAT_ANIM_MS 2500UL
@@ -143,12 +145,15 @@ struct StatBreakdown {
 /** Highest experience value a pet can hold. */
 constexpr uint32_t PET_XP_MAX = 1640000UL;
 
+/** Returns the growth group of a Dex species; invalid IDs use MediumFast. */
+GrowthRate growthRateOfDex(int16_t dex);
+
 /** Persistent state stored for one party member. */
 struct PartySlot {
   int16_t speciesId = 0; // Zero means empty; 1..DEX_COUNT are species IDs.
   bool shiny = false;
   char nick[12] = "";
-  uint32_t ageMinutes = 0; // Determines the current level.
+  uint32_t ageMinutes = 0; // Real age in minutes. The level comes from xp.
   uint8_t nature = NATURE_HARDY;
   uint8_t ivs[STAT_COUNT] = { 10, 10, 10, 10, 10, 10 };
   uint8_t evs[STAT_COUNT] = { 0, 0, 0, 0, 0, 0 };
@@ -158,6 +163,7 @@ struct PartySlot {
   uint8_t careMistakes = 0;
   uint16_t medals = 0;
   bool berryKnown = false;
+  bool evoDismissed = false; // Fits the padding before xp, so the blob size is unchanged.
   uint32_t xp = 0; // Appended last so older party blobs keep their layout.
 };
 
@@ -193,7 +199,10 @@ public:
   uint32_t lastCareDay = 0;
   // Pet bond increases gradually with care and resets for a new pet.
   uint8_t bond = 0;
-  uint32_t xp = 0;       // Experience, capped at PET_XP_MAX.
+  uint32_t xp = 0;       // Experience; the level is derived from it. Capped at the L100 threshold.
+  uint32_t xpLastMs = 0;   // millis() of the last XP clock update.
+  uint32_t xpCarryMs = 0;  // Awake time not yet converted into XP.
+  bool xpClockArmed = false;
   char nick[12] = "";    // Nickname; empty means use the species name.
   // Medals earned by this pet and the lifetime total across all pets.
   uint16_t medals = 0, totalMedals = 0;
@@ -453,15 +462,15 @@ public:
   bool canFarewellNow() const;
   /** Returns whether neglect has made the pet eligible to run away. */
   bool canRunawayNow() const;
-  // The player can defer evolution or farewell through a choice dialog.
-  /** Returns whether the evolution prompt should currently be shown. */
+  // The player can dismiss evolution or defer farewell through a choice dialog.
+  /** Returns whether the main-screen evolve button should be shown. */
   bool wantEvolveButton() const;
   /** Returns whether the deferred farewell prompt should be shown. */
   bool wantFarewellButton() const { return canFarewellNow() && ageMinutes >= farDeclinedAge; }
-  /** Defers the current evolution prompt until a later level. */
+  /** Dismisses the evolution prompt for this individual until it evolves or is swapped out. */
   void declineEvolve();
-  /** Clears any previously deferred evolution prompt. */
-  void resetEvolutionDeferral();
+  /** Clears the evolution dismissal. */
+  void resetEvoDismissed();
   /** Defers the farewell prompt by one in-game day. */
   void declineFarewell() { farDeclinedAge = ageMinutes + 1440; }
   // On a new game, the player selects the starter species.
@@ -473,11 +482,12 @@ public:
   void factoryReset() { prefs.clear(); }
   /** Sets care stats and neglect time so tests can trigger the runaway state. */
   void dbgRunawayReady() { fullness = joy = energy = hygiene = 0; neglectTicks = RUNAWAY_TICKS; }
-  /** Returns the pet's level, capped at 100. */
-  uint8_t level() const {
-    uint32_t raw = 1UL + ageMinutes / MINUTES_PER_LEVEL;
-    return raw > 100UL ? 100 : (uint8_t)raw;
-  }
+  /** Returns the pet's level, derived from xp and the species growth group. */
+  uint8_t level() const { return levelFromXp(growthRate(), xp); }
+  /** Returns the active pet's growth group. */
+  GrowthRate growthRate() const;
+  /** Adds xp, stopping at the L100 cap. Plays the level-up sound and checks medals when the level changes. */
+  void addXp(uint32_t amount);
   /** Returns whether the species is registered as raised. */
   bool isRegistered(int16_t dex) const {
     return dex >= 1 && dex <= DEX_COUNT && (dexReg[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
@@ -583,8 +593,7 @@ private:
   uint8_t mistakeCooldown = 0;
   uint8_t ticksSinceSave = 0;
   bool pendingSave = false;     // Periodic save waiting to be written.
-  uint8_t evoDeclinedLv = 0;    // Level at which the evolution prompt was deferred.
-  uint32_t evoDeclinedAge = 0;  // Age threshold for deferral at level 100.
+  bool evoDismissed = false;    // The player chose to keep this form; hides the main-screen evolve button.
   uint32_t farDeclinedAge = 0;  // Age threshold for showing a deferred farewell.
   bool starterPick = false;     // New game is waiting for starter selection.
   uint8_t neglectTicks = 0;

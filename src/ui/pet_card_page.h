@@ -49,3 +49,5 @@ PetCardPageScreen *petCardScreenForPage(uint8_t page);
 void openPetCardPage(uint8_t page, Screen *returnTo = nullptr);
 /** Opens a card page from inside the card, keeping the current return target. */
 void openPetCardSubpage(uint8_t page);
+/** Closes the card pages and returns to the screen that opened them. */
+void closePetCardPages();

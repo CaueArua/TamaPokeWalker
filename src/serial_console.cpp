@@ -105,7 +105,7 @@ void handleSerial() {
     }
     Serial.println("DONE");
   } else if (line.startsWith("LVL ")) {
-    pet.ageMinutes = (uint32_t)line.substring(4).toInt() * MINUTES_PER_LEVEL;
+    pet.setActiveLevel((uint8_t)constrain(line.substring(4).toInt(), 1, 100));
     Serial.println("DONE");
   } else if (line.startsWith("TIME ")) {
     uint32_t e = (uint32_t)line.substring(5).toInt();
@@ -200,10 +200,10 @@ void handleSerial() {
       pet.prevSpeciesId = -1;
       pet.sleeping = false;
       pet.ceremony = CER_NONE;
-      pet.resetEvolutionDeferral();
+      pet.resetEvoDismissed();
       pet.careMistakes = 0;
       uint8_t requiredLevel = pet.evolutionRequiredLevelFor(target);
-      pet.ageMinutes = (uint32_t)(requiredLevel > 0 ? requiredLevel - 1 : 0) * MINUTES_PER_LEVEL;
+      pet.setActiveLevel(requiredLevel > 1 ? requiredLevel : 1);
       pet.fullness = pet.joy = pet.energy = pet.hygiene = 80;
       pet.bond = 60;
       pet.evs[STAT_ATK] = pet.evs[STAT_DEF] = pet.evs[STAT_SPE] = 0;

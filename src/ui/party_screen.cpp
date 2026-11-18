@@ -46,10 +46,9 @@ static void smallCellRect(uint8_t idx, int &x, int &y) {
   y = SGRID_Y0 + (idx / 3) * (SGRID_H + SGRID_GAP_Y);
 }
 
-/** Calculates a party slot's level from its stored age. */
+/** Returns a party slot's level, derived from its stored xp. */
 static uint8_t partySlotLevel(const PartySlot &slot) {
-  uint8_t level = 1 + (slot.ageMinutes / MINUTES_PER_LEVEL);
-  return level > 100 ? 100 : level;
+  return levelFromXp(growthRateOfDex(slot.speciesId), slot.xp);
 }
 
 /** Synchronizes the active pet and loads sprite data for occupied slots. */
