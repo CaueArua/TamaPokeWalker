@@ -4,6 +4,7 @@
 #include "time_utils.h"
 #include "dex.h"
 #include "pet_growth.h"
+#include "src/core/tick_scheduler.h"
 
 // One game tick is one in-game minute. Lower this value to accelerate testing.
 #define PET_TICK_MS 60000UL
@@ -397,8 +398,14 @@ public:
   void release();
   /** Applies elapsed time since the last saved RTC timestamp. */
   void syncClock(uint32_t nowEpoch);
+  /** Applies the given number of offline minutes, starting at startEpoch. Does not save. */
+  void applyOfflineMinutes(uint32_t mins, uint32_t startEpoch);
   /** Sets the pet's clock baseline without applying offline progression. */
   void setClock(uint32_t nowEpoch);
+  /** Records the latest real time as the baseline without saving or applying progression. */
+  void observeClock(uint32_t nowEpoch) {
+    if (nowEpoch) lastSeenEpoch = nowEpoch;
+  }
   /** Starts a farewell ceremony for an eligible final-form pet. */
   void startFarewell();
   /** Starts a runaway ceremony for a neglected pet. */
@@ -566,7 +573,7 @@ public:
 
 private:
   Preferences prefs;
-  uint32_t lastTick = 0;
+  TickScheduler tickSched{PET_TICK_MS};
   uint32_t eatUntil = 0;
   uint32_t heartUntil = 0;
   uint32_t evolveUntil = 0;

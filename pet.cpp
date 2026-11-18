@@ -4,6 +4,7 @@
 #include "pet_stats.h"
 #include "audio.h"
 #include "dayphase.h"
+#include "src/core/clock.h"
 
 namespace {
 constexpr uint32_t BACKUP_MAGIC = 0x314B4254UL; // TBK1
@@ -69,7 +70,7 @@ void Pet::begin() {
     load();
   }
   ensureStepDay();
-  lastTick = millis();
+  tickSched.reset(millis());
 }
 
 void Pet::newEgg() {
@@ -121,13 +122,16 @@ void Pet::syncClock(uint32_t nowEpoch) {
   lastSeenEpoch = nowEpoch;
   ensureStepDay();
   if (nowEpoch == 0) return;
-  uint32_t mins = (seen && nowEpoch > seen) ? (nowEpoch - seen) / 60 : 0;
+  uint32_t mins = seen ? clockElapsedMinutes(nowEpoch, seen) : 0;  // Zero seen means first boot.
   if (mins < 2 || ceremony != CER_NONE) {
     save();  // First sync or no elapsed time: persist only the new clock value.
     return;
   }
-  if (mins > 14UL * 24 * 60) mins = 14UL * 24 * 60;  // Cap offline progression at two weeks.
+  applyOfflineMinutes(mins, seen);
+  save();
+}
 
+void Pet::applyOfflineMinutes(uint32_t mins, uint32_t startEpoch) {
   for (uint32_t i = 0; i < mins; i++) {
     ageMinutes++;
     if (isEgg()) {
@@ -143,7 +147,7 @@ void Pet::syncClock(uint32_t nowEpoch) {
       if (ageMinutes % 3 == 0) hygiene = dropTo(hygiene, 1, 45);
       continue;
     }
-    uint32_t minuteEpoch = seen + (i + 1UL) * 60UL;
+    uint32_t minuteEpoch = startEpoch + (i + 1UL) * 60UL;
     fullness = dropTo(fullness, nightFoodDrop(minuteEpoch), 15);
     energy = dropTo(energy, 1, 15);
     hygiene = dropTo(hygiene, 1, 15);
@@ -157,7 +161,6 @@ void Pet::syncClock(uint32_t nowEpoch) {
     // Evolution is not applied offline; the player triggers it after returning.
   }
   Serial.printf("offline: %u min aplicados (nv.%u)\n", mins, level());
-  save();
 }
 
 // Removes the active pet from its slot, shifts later slots forward, and
@@ -231,13 +234,9 @@ bool Pet::update(uint32_t nowMs) {
     newEgg(); // Start an egg if the party is empty or the pet left.
     return true;
   }
-  bool changed = false;
-  while (nowMs - lastTick >= PET_TICK_MS) {
-    lastTick += PET_TICK_MS;
-    tick();
-    changed = true;
-  }
-  return changed;
+  uint32_t ticks = tickSched.consume(nowMs);
+  for (uint32_t i = 0; i < ticks; i++) tick();
+  return ticks > 0;
 }
 
 void Pet::tick() {

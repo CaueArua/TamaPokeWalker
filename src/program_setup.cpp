@@ -4,9 +4,11 @@
 
 #include "../audio.h"
 #include "../pet.h"
-#include "../rtcbat.h"
 #include "../sdmon.h"
 #include "app_controller.h"
+#include "core/clock_service.h"
+#include "hardware/power.h"
+#include "ui/clock_screen.h"
 #include "ui/power_manager.h"
 #include "ui/screen_controller.h"
 #include "ui/starter_screen.h"
@@ -19,21 +21,23 @@ extern uint32_t lastRender;
 void initializeProgram() {
   pet.begin();
   gameInfoLoad();
-  if (pet.awaitingStarter()) setScreen(&starterScreen);
+  bool awaitingStarter = pet.awaitingStarter();
   Serial.printf("SAVE %s spec=%d lv=%u wins=%u losses=%u streak=%u\n",
                 pet.saveLoadedFromNvs ? "loaded" : "created",
                 pet.speciesId, pet.level(), pet.battleWins, pet.battleLosses, pet.battleStreak);
   thumbs.load();
 
   pwrSetup();
-  uint32_t e = rtcEpoch();
+  uint32_t e = Clock::nowEpoch();
   if (e == 0) {
-    rtcSetEpoch(1767225600UL);  // Seed a blank RTC; only elapsed-time differences matter.
-    e = rtcEpoch();
-    Serial.println("RTC sin hora: sembrado, sin progresion offline esta vez");
+    // RTC absent, stopped, or not set: the user must set the time before the pet can sync.
+    clockSettingsScreen.openAtBoot(awaitingStarter ? &starterScreen : nullptr);
+    Serial.println("RTC sem hora: abrindo configuracao de data e hora");
+  } else {
+    // Synchronize the pet with the real-time clock, including powered-off time.
+    pet.syncClock(e);
+    if (awaitingStarter) setScreen(&starterScreen);
   }
-  // Synchronize the pet with the real-time clock, including powered-off time.
-  pet.syncClock(e);
   loadPowerSave();
 
   ensureMon();

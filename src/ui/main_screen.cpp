@@ -7,13 +7,13 @@
 
 #include "../../audio.h"
 #include "../../battle.h"
+#include "../core/clock_service.h"
 #include "../../biome.h"
 #include "../../dex.h"
 #include "../../game_info.h"
 #include "../../dayphase.h"
 #include "../../i18n.h"
 #include "../../pet.h"
-#include "../../rtcbat.h"
 #include "../../sdmon.h"
 #include "../../species.h"
 #include "../../species_chirp.h"
@@ -36,7 +36,7 @@
 #include "render_utils.h"
 #include "touch_controller.h"
 #include "power_manager.h"
-
+#include "../hardware/power.h"
 bool gameMenuDirty = true;
 bool gameMenuOpen = false;
 uint32_t bathUntil = 0;
@@ -249,7 +249,7 @@ uint16_t expeditionItemColor(ExpeditionItem item) {
 
 /** Returns the current RTC time, falling back to the pet's saved timestamp. */
 uint32_t expeditionNowEpoch() {
-  uint32_t nowEpoch = rtcEpoch();
+  uint32_t nowEpoch = Clock::nowEpoch();
   return nowEpoch ? nowEpoch : pet.lastSeenEpoch;
 }
 

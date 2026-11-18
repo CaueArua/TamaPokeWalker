@@ -28,7 +28,7 @@ pet.h / pet.cpp               Regras de jogo, progressão, persistência (NVS)
 battle.h / battle.cpp         Matemática de batalha (determinística)
 dex.h, species.h              Dados de espécies, evoluções, sprites (gerados)
         │
-Drivers de hardware           audio, imu, rtcbat, sdmon, thumb_format, pin_config
+Drivers de hardware           audio, imu, sdmon, thumb_format, pin_config (RTC e AXP2101 em src/hardware/)
 i18n.h / i18n.cpp             Textos em 6 idiomas
 serial_console.cpp            Comandos de depuração e transferência via USB serial
 ```
@@ -88,8 +88,7 @@ A cada iteração:
 | `audio.h` / `audio.cpp` | Driver de áudio: codec ES8311, I2S, amplificador, tarefa FreeRTOS que toca uma fila de efeitos sonoros (`Sfx`) sem bloquear o loop. Modos de volume em `SoundMode`. |
 | `i18n.h` / `i18n.cpp` | Sistema de textos: enum `StrId` (ordem deve coincidir com a tabela `STRINGS`), `T(id)`, `dexName`, nomes/descrições de medalhas e idioma persistido (`loadLang`, `setLang`). |
 | `imu.h` / `imu.cpp` | Driver do QMI8658: detecção de passos (com filtro de cadência para rejeitar trepidações isoladas), detecção de sacudida (*shake*) e contadores de pedômetro. |
-| `rtcbat.h` / `rtcbat.cpp` | RTC PCF85063 (`rtcEpoch`, `rtcSetEpoch`) e AXP2101 (bateria, USB, habilitação do painel, botão PWR). |
-| `time_utils.h` | Funções inline de tempo: hora da cena, fase do dia, dia/hora Unix, escurecimento noturno. |
+| `time_utils.h` | Helpers de deadline (`deadlineActive`, etc.) usados pelos timers de UI e simulação. |
 | `dayphase.h` | Fases do dia (manhã, dia, tarde, noite) e helpers de visual noturno e perda de comida. |
 | `sdmon.h` / `sdmon.cpp` | Gerenciamento do microSD: montagem (SDMMC 1 bit), carregamento de sprites `TPK1` (legado, `SdMon`) e `TPK2`/PMD (`PmdMon`, multi-ação, na PSRAM), índice de miniaturas (`SdThumbs`) e comandos de transferência via serial. |
 | `thumb_format.h` / `thumb_format.cpp` | Formato codificado das miniaturas da galeria. |
@@ -125,6 +124,14 @@ A cada iteração:
 | `src/sensor_setup.cpp` | Inicialização dos sensores (touch, RTC, bateria, IMU). |
 | `src/app_controller.h` / `.cpp` | Loop principal (`runAppLoop`) e lógica de som ambiente. Mantém estado de sprite (`ensureMon`). |
 | `src/serial_console.h` / `.cpp` | `handleSerial()`: lê linhas da USB serial e despacha comandos. |
+| `src/core/clock.h` | Lógica pura de calendário e tempo offline (sem Arduino). Testada em `tests/clock_test.cpp`. |
+| `src/core/clock_service.h` / `.cpp` | Namespace `Clock`: `nowEpoch()`, `set()` e `tick()`. Usa o RTC quando válido; sem RTC, conta segundos com `millis()` a partir da última hora salva. Único arquivo de `core` que fala com o hardware. |
+| `src/core/tick_scheduler.h` | Contador de ticks de período fixo, usado por `Pet::update`. Testado em `tests/tick_scheduler_test.cpp`. |
+| `src/hardware/rtc.h` / `.cpp` | Driver do RTC PCF85063 (`rtcReadDateTime`, `rtcWriteDateTime`). |
+| `src/hardware/soft_clock_store.h` / `.cpp` | Grava e lê a hora de software no NVS (namespace `tamapoke`, chave `clkSoft`). |
+| `src/hardware/power.h` / `.cpp` | Driver do AXP2101: bateria, USB, painel e botão PWR. |
+
+Regra: telas e `Pet` usam `Clock::` ou `hardware/power.h`. Não acessam `rtc*` diretamente.
 
 Comandos seriais identificados em `serial_console.cpp`: `SAVEPUT`, `SPEC`, `LVL`, `TIME`,
 `RTCSET` (simula tempo desligado), `NICK`, `CAUGHT`, `BATTLE`, `WALK` e os de teste

@@ -6,10 +6,10 @@
 #include <esp_sleep.h>
 
 #include "../../audio.h"
+#include "../hardware/power.h"
 #include "../../imu.h"
 #include "../../pet.h"
 #include "../../pin_config.h"
-#include "../../rtcbat.h"
 #include "../../time_utils.h"
 #include "screen.h"
 #include "screen_controller.h"

@@ -10,6 +10,8 @@ class ClockSettingsScreen : public Screen {
 public:
   /** Initializes and activates the clock settings screen. */
   void open(Screen *returnTo);
+  /** Activates the screen during startup, without sound (audio is not up yet). */
+  void openAtBoot(Screen *returnTo);
   /** Draws the date and time settings. */
   void render() override;
   /** Handles taps on the date and time controls. */

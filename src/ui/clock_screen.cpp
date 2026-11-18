@@ -1,5 +1,6 @@
 #include "clock_screen.h"
 
+#include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,9 +8,9 @@
 #include "../../audio.h"
 #include "../../i18n.h"
 #include "../../pet.h"
-#include "../../rtcbat.h"
 #include "../../species.h"
-#include "settings_logic.h"
+#include "../core/clock.h"
+#include "../core/clock_service.h"
 
 extern Arduino_Canvas *gfx;
 extern Pet pet;
@@ -17,11 +18,21 @@ extern void flushStampedFrame();
 
 bool clockDirty = true;
 ClockSettingsScreen clockSettingsScreen;
-static SettingsDateTime selectedDateTime;
-static bool clockAvailable = false;
+static ClockDateTime selectedDateTime;
+static bool clockValid = false;
+static bool clockUnset = false;  // RTC present but holding no valid time.
+static bool clockTouched = false;
+static uint32_t clockRenderedMs = 0;
+// 2026-01-01 00:00 UTC, shown while the RTC has no valid time and no saved time exists.
+static const uint32_t CLOCK_FALLBACK_EPOCH = 1767225600UL;
 
 static const char *const TITLES[LANG_COUNT] = {
   "FECHA/HORA", "DATE/TIME", "DATE/HEURE", "DATUM/ZEIT", "DATA/ORA", "DATA/HORA"
+};
+
+static const char *const UNSET_LABELS[LANG_COUNT] = {
+  "HORA NAO CONFIGURADA", "TIME NOT SET", "HEURE NON DEFINIE",
+  "UHRZEIT NICHT GESETZT", "ORA NON IMPOSTATA", "HORA NO CONFIGURADA"
 };
 
 static void centered(const char *text, int x, int y, int size, uint16_t color) {
@@ -31,20 +42,36 @@ static void centered(const char *text, int x, int y, int size, uint16_t color) {
   gfx->print(text);
 }
 
-void ClockSettingsScreen::open(Screen *returnTo) {
-  uint32_t epoch = rtcEpoch();
-  clockAvailable = epoch != 0;
-  if (clockAvailable) selectedDateTime = settingsDateTimeFromEpoch(epoch);
+/** Reloads the displayed date from the clock until the user starts editing. */
+static void refreshFromClock() {
+  if (clockTouched) return;
+  uint32_t epoch = Clock::nowEpoch();
+  clockValid = epoch != 0;
+  clockUnset = !clockValid && Clock::available();
+  if (!clockValid) epoch = pet.lastSeenEpoch ? pet.lastSeenEpoch : CLOCK_FALLBACK_EPOCH;
+  selectedDateTime = clockDateTime(epoch);
+  clockRenderedMs = millis();
+}
+
+void ClockSettingsScreen::openAtBoot(Screen *returnTo) {
+  clockTouched = false;
+  refreshFromClock();
   clockDirty = true;
   returnScreen = returnTo;
   setScreen(this);
+}
+
+void ClockSettingsScreen::open(Screen *returnTo) {
+  openAtBoot(returnTo);
   sfxPlay(SFX_MENU);
 }
 
 void ClockSettingsScreen::applyTime() {
-  uint32_t epoch = settingsDateTimeEpoch(selectedDateTime);
-  rtcSetEpoch(epoch);
-  pet.setClock(epoch);
+  ClockDateTime target = selectedDateTime;
+  target.second = 0;
+  uint32_t epoch = epochFromDateTime(target);
+  Clock::set(epoch);
+  pet.syncClock(epoch);
   closeSettings();
 }
 
@@ -69,22 +96,20 @@ static void drawField(int x, int y, const char *label, int value, bool year) {
 
 void ClockSettingsScreen::render() {
   clockDirty = false;
+  refreshFromClock();
   gfx->fillScreen(UI_BG_DAY);
   uint8_t lang = gLang < LANG_COUNT ? (uint8_t)gLang : (uint8_t)LANG_EN;
   centered(TITLES[lang], 233, 42, 3, UI_INK);
-
-  if (!clockAvailable) {
-    centered("RTC ERROR", 233, 205, 2, UI_BAR_BAD);
-    centered("SWIPE TO RETURN", 233, 390, 1, UI_TRACK);
-    flushStampedFrame();
-    return;
-  }
 
   drawField(145, 85, "DD", selectedDateTime.day, false);
   drawField(233, 85, "MM", selectedDateTime.month, false);
   drawField(321, 85, "YYYY", selectedDateTime.year, true);
   drawField(180, 233, T(S_HOUR), selectedDateTime.hour, false);
   drawField(286, 233, T(S_MIN), selectedDateTime.minute, false);
+  if (!clockValid) {
+    if (clockUnset) centered(UNSET_LABELS[lang], 233, 205, 2, UI_BAR_BAD);
+    else centered("RTC ERROR", 233, 205, 2, UI_BAR_BAD);
+  }
 
   gfx->fillRoundRect(155, 399, 156, 42, 13, UI_BAR_OK);
   centered(T(S_OK), 233, 410, 3, UI_BG_DAY);
@@ -92,7 +117,7 @@ void ClockSettingsScreen::render() {
 }
 
 void ClockSettingsScreen::handleTap(int16_t x, int16_t y) {
-  if (!clockAvailable) return;
+  clockTouched = true;
   if (x >= 155 && x < 311 && y >= 399 && y < 441) {
     applyTime();
     return;
@@ -110,7 +135,7 @@ void ClockSettingsScreen::handleTap(int16_t x, int16_t y) {
     else if (x >= 260 && x < 312) field = 4;
   }
   if (field >= 0) {
-    settingsAdjustDateTime(selectedDateTime, field, direction);
+    clockAdjustDateTime(selectedDateTime, field, direction);
     clockDirty = true;
     sfxPlay(SFX_TAP);
   }
@@ -122,7 +147,8 @@ void ClockSettingsScreen::handleSwipeV(int) {
 }
 
 bool ClockSettingsScreen::isStaticClean() const {
-  return !clockDirty;
+  if (clockDirty) return false;
+  return clockTouched || millis() - clockRenderedMs < 1000;
 }
 
 void ClockSettingsScreen::markDirty() {

@@ -6,8 +6,9 @@
 #include "../game_info.h"
 #include "../imu.h"
 #include "../pet.h"
-#include "../rtcbat.h"
 #include "../sdmon.h"
+#include "core/clock_service.h"
+#include "hardware/power.h"
 #include "ui/battle_screen.h"
 #include "ui/dex_screen.h"
 #include "ui/screen_controller.h"
@@ -108,16 +109,16 @@ void handleSerial() {
     Serial.println("DONE");
   } else if (line.startsWith("TIME ")) {
     uint32_t e = (uint32_t)line.substring(5).toInt();
-    rtcSetEpoch(e);
+    Clock::set(e);
     pet.setClock(e);
-    Serial.printf("rtc=%u\n", rtcEpoch());
+    Serial.printf("rtc=%u\n", Clock::nowEpoch());
     Serial.println("DONE");
   } else if (line.startsWith("RTCSET ")) {  // Set only the RTC to simulate powered-off time.
-    rtcSetEpoch((uint32_t)line.substring(7).toInt());
-    Serial.printf("rtc=%u\n", rtcEpoch());
+    Clock::set((uint32_t)line.substring(7).toInt());
+    Serial.printf("rtc=%u\n", Clock::nowEpoch());
     Serial.println("DONE");
   } else if (line == "TIME") {
-    Serial.printf("rtc=%u\n", rtcEpoch());
+    Serial.printf("rtc=%u\n", Clock::nowEpoch());
     Serial.println("DONE");
   } else if (line == "GAL") {
     if (activeScreen == &dexScreen) {
@@ -427,7 +428,7 @@ void handleSerial() {
     Serial.printf("spec=%d nv=%u com=%u fel=%u ene=%u lim=%u desc=%u sd=%d mon=%d bat=%d usb=%d rtc=%u\n",
                   pet.speciesId, pet.level(), pet.fullness, pet.joy, pet.energy,
                   pet.hygiene, pet.careMistakes, sdReady, mon.loaded,
-                  batPercent(), usbPresent(), rtcEpoch());
+                  batPercent(), usbPresent(), Clock::nowEpoch());
     Serial.printf("peso=%u fue=%u def=%u vel=%u nat=%s ivs=%u/%u/%u/%u/%u/%u evs=%u/%u/%u/%u/%u/%u baya=%d\n",
                   pet.weight, pet.atkStat(), pet.defStat(), pet.speStat(),
                   natureName(pet.nature),
@@ -453,7 +454,7 @@ void handleSerial() {
     Serial.println("DONE");
   } else if (line.startsWith("WALK ")) {
     uint16_t n = (uint16_t)line.substring(5).toInt();
-    uint8_t gained = pet.applyWalk(n, rtcEpoch());
+    uint8_t gained = pet.applyWalk(n, Clock::nowEpoch());
     Serial.printf("walk=%u today=%lu total=%lu joy=%u bond=%u\n", gained,
                   (unsigned long)pet.stepsToday, (unsigned long)pet.stepsTotal,
                   pet.joy, pet.bond);

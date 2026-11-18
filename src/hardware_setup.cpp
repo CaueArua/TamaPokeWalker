@@ -7,8 +7,8 @@
 #include "../i18n.h"
 #include "../nationalDex.h"
 #include "../pin_config.h"
-#include "../rtcbat.h"
 #include "../sdmon.h"
+#include "hardware/power.h"
 #include "system/board_storage.h"
 
 extern Arduino_CO5300 *panel;

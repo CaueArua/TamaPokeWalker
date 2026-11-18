@@ -1,13 +1,14 @@
 #include "startup.h"
 
 #include "../imu.h"
-#include "../rtcbat.h"
+#include "core/clock_service.h"
+#include "hardware/power.h"
 #include "ui/touch_controller.h"
 
 /** Initializes the touch, clock, battery, and motion sensors. */
 void initializeSensors() {
   touchBegin();
-  rtcBegin();
+  Clock::begin();
   batBegin();
   imuBegin();
 }

@@ -4,11 +4,12 @@
 #include "../i18n.h"
 #include "../imu.h"
 #include "../pet.h"
-#include "../rtcbat.h"
 #include "../sdmon.h"
 #include "../species_chirp.h"
 #include "../time_utils.h"
 #include "app_controller.h"
+#include "core/clock_service.h"
+#include "hardware/power.h"
 #include "serial_console.h"
 #include "ui/main_screen.h"
 #include "ui/pet_card_page.h"
@@ -99,6 +100,7 @@ static void maybePlayAmbientSound(uint32_t now) {
 void runAppLoop() {
   uint32_t now = millis();
   uint32_t loopStart = now;
+  Clock::tick();
   bool petChanged = pet.update(now);
   if (petChanged && activeScreen == petCardScreenForPage(cardPage))
     activeScreen->markDirty();
@@ -132,7 +134,7 @@ void runAppLoop() {
   // Count steps immediately after USB is unplugged; cached VBUS state could
   // otherwise discard real steps for up to ten seconds.
   if (walked) {
-    pet.applyWalk(walked, rtcEpoch());
+    pet.applyWalk(walked, Clock::nowEpoch());
   }
   mainScreen.updateWalkCards(walked, stepsBefore, stepDayBefore);
   if (imuShakeEdge() && !screenOff) {
@@ -189,8 +191,7 @@ void runAppLoop() {
   uint32_t clockPollMs = powerSave ? 60000UL : 30000UL;
   if (now - lastClock > clockPollMs) {
     lastClock = now;
-    uint32_t e = rtcEpoch();
-    if (e) pet.lastSeenEpoch = e;
+    pet.observeClock(Clock::nowEpoch());
   }
 
   mainScreen.updateExpedition(now);
